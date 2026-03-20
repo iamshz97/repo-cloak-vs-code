@@ -1,0 +1,197 @@
+/**
+ * Repo Cloak — VS Code Extension Entry Point
+ * 🎭 Selectively extract and anonymize files from repositories
+ */
+
+import * as vscode from 'vscode';
+import { SidebarProvider } from './views/sidebar-provider';
+import { FileTreeProvider } from './views/file-tree-provider';
+import { executePull } from './commands/pull';
+import { executePush, executePushAll } from './commands/push';
+import { executeSync } from './commands/sync';
+import {
+    hasMapping, loadMapping, loadRawMapping, decryptMappingV2,
+    removeSourceFromMapping, saveMapping, getSourceLabels, MappingV2
+} from './core/mapper';
+import { hasSecret, getOrCreateSecret, encryptReplacements } from './core/crypto';
+import { Replacement } from './core/anonymizer';
+
+export function activate(context: vscode.ExtensionContext) {
+    const outputChannel = vscode.window.createOutputChannel('Repo Cloak');
+
+    // ─── Sidebar ────────────────────────────────────────────────────────────
+    const sidebarProvider = new SidebarProvider(context.extensionUri);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebarProvider)
+    );
+
+    // ─── File Tree ──────────────────────────────────────────────────────────
+    const fileTreeProvider = new FileTreeProvider();
+    const treeView = vscode.window.createTreeView('repo-cloak.fileTree', {
+        treeDataProvider: fileTreeProvider,
+        manageCheckboxStateManually: true,
+        showCollapseAll: true
+    });
+    fileTreeProvider.setTreeView(treeView);
+
+    // Handle checkbox changes
+    treeView.onDidChangeCheckboxState((e) => {
+        for (const [item, state] of e.items) {
+            fileTreeProvider.handleCheckboxChange(item, state);
+        }
+    });
+
+    context.subscriptions.push(treeView);
+
+    // ─── Commands ───────────────────────────────────────────────────────────
+
+    // Pull
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.pull', () => {
+            executePull(fileTreeProvider, sidebarProvider, outputChannel);
+        })
+    );
+
+    // Push (single source)
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.push', () => {
+            executePush(sidebarProvider, outputChannel);
+        })
+    );
+
+    // Push All
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.pushAll', () => {
+            executePushAll(sidebarProvider, outputChannel);
+        })
+    );
+
+    // Sync
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.sync', () => {
+            executeSync(sidebarProvider, outputChannel);
+        })
+    );
+
+    // Add Source (triggers Pull flow)
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.addSource', () => {
+            executePull(fileTreeProvider, sidebarProvider, outputChannel);
+        })
+    );
+
+    // Remove Source
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.removeSource', async (label?: string) => {
+            const cloakedDir = findCloakedDirectory();
+            if (!cloakedDir) {
+                vscode.window.showErrorMessage('No cloaked workspace found.');
+                return;
+            }
+
+            let mapping = loadRawMapping(cloakedDir);
+            if (!mapping) { return; }
+
+            const sourceLabels = getSourceLabels(mapping);
+
+            if (!label) {
+                const pick = await vscode.window.showQuickPick(
+                    sourceLabels.map(l => ({ label: l })),
+                    { title: 'Which source do you want to remove?' }
+                );
+                if (!pick) { return; }
+                label = pick.label;
+            }
+
+            const confirm = await vscode.window.showWarningMessage(
+                `Remove source "${label}" from the mapping? (Files in the cloaked directory will NOT be deleted)`,
+                { modal: true },
+                'Remove'
+            );
+
+            if (confirm !== 'Remove') { return; }
+
+            mapping = removeSourceFromMapping(mapping, label);
+            saveMapping(cloakedDir, mapping);
+            sidebarProvider.refresh();
+            vscode.window.showInformationMessage(`✓ Removed source "${label}"`);
+        })
+    );
+
+    // Add Replacement
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.addReplacement', async () => {
+            const cloakedDir = findCloakedDirectory();
+            if (!cloakedDir) {
+                vscode.window.showErrorMessage('No cloaked workspace found. Pull files first.');
+                return;
+            }
+
+            const original = await vscode.window.showInputBox({
+                prompt: 'Keyword to replace',
+                placeHolder: 'e.g., Microsoft Corp'
+            });
+            if (!original || !original.trim()) { return; }
+
+            const replacement = await vscode.window.showInputBox({
+                prompt: `Replace "${original}" with:`,
+                placeHolder: 'e.g., ACME Inc',
+                validateInput: v => v.trim() ? null : 'Replacement cannot be empty'
+            });
+            if (!replacement) { return; }
+
+            const mapping = loadRawMapping(cloakedDir);
+            if (!mapping) { return; }
+
+            const secret = getOrCreateSecret();
+            const newRepl = encryptReplacements(
+                [{ original: original.trim(), replacement: replacement.trim() }],
+                secret
+            );
+
+            mapping.replacements = [...(mapping.replacements || []), ...newRepl];
+            mapping.stats = {
+                ...mapping.stats,
+                replacementsCount: mapping.replacements.length
+            };
+
+            saveMapping(cloakedDir, mapping);
+            sidebarProvider.refresh();
+            vscode.window.showInformationMessage(`✓ Added replacement: "${original}" → "${replacement}"`);
+        })
+    );
+
+    // File Tree: Confirm Selection
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.confirmFileSelection', () => {
+            fileTreeProvider.confirmSelection();
+        })
+    );
+
+    // File Tree: Cancel Selection
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.cancelFileSelection', () => {
+            fileTreeProvider.cancelSelection();
+        })
+    );
+
+    // ─── Auto-refresh on workspace changes ──────────────────────────────────
+    const watcher = vscode.workspace.createFileSystemWatcher('**/.repo-cloak-map.json');
+    watcher.onDidChange(() => sidebarProvider.refresh());
+    watcher.onDidCreate(() => sidebarProvider.refresh());
+    watcher.onDidDelete(() => sidebarProvider.refresh());
+    context.subscriptions.push(watcher);
+
+    outputChannel.appendLine('🎭 Repo Cloak extension activated');
+}
+
+export function deactivate() { }
+
+function findCloakedDirectory(): string | null {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) { return null; }
+    for (const folder of workspaceFolders) {
+        if (hasMapping(folder.uri.fsPath)) { return folder.uri.fsPath; }
+    }
+    return null;
+}
