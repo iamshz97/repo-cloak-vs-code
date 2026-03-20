@@ -64,7 +64,21 @@
         "title": "Repo Cloak: Push All Sources",
         "icon": "$(repo-push)"
       },
-
+      {
+        "command": "repo-cloak.pullAction",
+        "title": "Repo Cloak: Pull",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "repo-cloak.pushAction",
+        "title": "Repo Cloak: Push",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "repo-cloak.forcePullAll",
+        "title": "Repo Cloak: Force Pull All Sources",
+        "icon": "$(repo-pull)"
+      },
       {
         "command": "repo-cloak.addSource",
         "title": "Repo Cloak: Add Source Repository",
@@ -100,6 +114,16 @@
         "command": "repo-cloak.pullSourceGit",
         "title": "Repo Cloak: Pull from Git Changes",
         "icon": "$(git-compare)"
+      },
+      {
+        "command": "repo-cloak.forcePullSource",
+        "title": "Repo Cloak: Force Pull Source",
+        "icon": "$(repo-pull)"
+      },
+      {
+        "command": "repo-cloak.forcePushSource",
+        "title": "Repo Cloak: Force Push Source",
+        "icon": "$(repo-push)"
       },
       {
         "command": "repo-cloak.searchFileSelection",

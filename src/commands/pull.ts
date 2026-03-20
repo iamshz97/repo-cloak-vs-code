@@ -707,7 +707,6 @@ export async function executePullSourceGit(
             }
             return { original: relative(sourceDir, f), cloaked: anonymizedPath };
         });
-
         const updatedMapping = mergeFilesIntoSource(rawMapping, label, newFiles);
         saveMapping(cloakedDir, updatedMapping);
 
@@ -716,6 +715,29 @@ export async function executePullSourceGit(
 
     } catch (error) {
         vscode.window.showErrorMessage(`Git pull failed: ${(error as Error).message}`);
+    }
+}
+
+/**
+ * Top-level Pull router (QuickPick for Interactive vs Force)
+ */
+export async function executePullAction(
+    fileTreeProvider: FileTreeProvider,
+    sidebarProvider: SidebarProvider,
+    outputChannel: vscode.OutputChannel
+): Promise<void> {
+    const pick = await vscode.window.showQuickPick(
+        [
+            { label: '$(list-tree) Interactive Pull', description: 'Select files to extract from a source', action: 'pull' },
+            { label: '$(repo-pull) Force Pull All', description: 'Quietly update all mapped files from sources', action: 'force' }
+        ],
+        { placeHolder: 'Choose a pull action...' }
+    );
+
+    if (pick?.action === 'pull') {
+        executePull(fileTreeProvider, sidebarProvider, outputChannel);
+    } else if (pick?.action === 'force') {
+        vscode.commands.executeCommand('repo-cloak.forcePullAll');
     }
 }
 

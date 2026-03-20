@@ -6,8 +6,9 @@
 import * as vscode from 'vscode';
 import { SidebarProvider } from './views/sidebar-provider';
 import { FileTreeProvider } from './views/file-tree-provider';
-import { executePull, executePullSource, executePullSourceGit } from './commands/pull';
-import { executePush, executePushAll } from './commands/push';
+import { executePull, executePullSource, executePullSourceGit, executePullAction } from './commands/pull';
+import { executePush, executePushAll, executePushAction, executeForcePushSource } from './commands/push';
+import { executeForcePullAll, executeForcePullSource } from './commands/force-pull';
 import {
     hasMapping, loadRawMapping,
     removeSourceFromMapping, saveMapping, getSourceLabels
@@ -42,6 +43,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ─── Pull ───────────────────────────────────────────────────────────────
     context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.pullAction', () => {
+            executePullAction(fileTreeProvider, sidebarProvider, outputChannel);
+        })
+    );
+
+    context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.pull', () => {
             executePull(fileTreeProvider, sidebarProvider, outputChannel);
         })
@@ -61,7 +68,26 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.forcePullAll', () => {
+            executeForcePullAll(sidebarProvider, outputChannel);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.forcePullSource', (label?: string) => {
+            if (label) {
+                executeForcePullSource(label, sidebarProvider, outputChannel);
+            }
+        })
+    );
+
     // ─── Push ───────────────────────────────────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.pushAction', () => {
+            executePushAction(sidebarProvider, outputChannel);
+        })
+    );
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.push', () => {
             executePush(sidebarProvider, outputChannel);
@@ -74,7 +100,13 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.forcePushSource', (label?: string) => {
+            if (label) {
+                executeForcePushSource(label, sidebarProvider, outputChannel);
+            }
+        })
+    );
 
     // ─── Source management ──────────────────────────────────────────────────
     context.subscriptions.push(
