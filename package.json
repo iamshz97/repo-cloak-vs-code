@@ -1,7 +1,7 @@
 {
   "name": "repo-cloak",
   "displayName": "Repo Cloak",
-  "description": "🎭 Selectively extract and anonymize files from repositories. Pull from multiple repos, anonymize sensitive data, push back — all from VS Code.",
+  "description": "Selectively extract and anonymize files from repositories. Pull from multiple repos, anonymize sensitive data, push back — all from VS Code.",
   "version": "0.1.0",
   "publisher": "iamshz97",
   "license": "MIT",
@@ -91,6 +91,16 @@
         "command": "repo-cloak.cancelFileSelection",
         "title": "Cancel",
         "icon": "$(close)"
+      },
+      {
+        "command": "repo-cloak.pullSource",
+        "title": "Repo Cloak: Pull Files for Source",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "repo-cloak.syncSource",
+        "title": "Repo Cloak: Sync Source",
+        "icon": "$(sync)"
       }
     ],
     "menus": {
