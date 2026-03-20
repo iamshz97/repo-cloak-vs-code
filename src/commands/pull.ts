@@ -245,10 +245,19 @@ export async function executePull(
                 `${secretFindings.length} potential secret(s) detected. Check Output panel for details.`,
                 { modal: true },
                 'Continue anyway',
+                'Remove files with secrets',
                 'Cancel'
             );
 
-            if (proceed !== 'Continue anyway') {
+            if (proceed === 'Remove files with secrets') {
+                const filesWithSecrets = new Set(secretFindings.map(f => f.file));
+                selectedFiles = selectedFiles.filter(f => !filesWithSecrets.has(f));
+                if (selectedFiles.length === 0) {
+                    vscode.window.showWarningMessage('All selected files contained secrets. Operation cancelled.');
+                    return;
+                }
+                vscode.window.showInformationMessage(`Removed ${filesWithSecrets.size} file(s) with secrets. Continuing with ${selectedFiles.length} file(s).`);
+            } else if (proceed !== 'Continue anyway') {
                 vscode.window.showInformationMessage('Operation cancelled.');
                 return;
             }
@@ -451,7 +460,7 @@ export async function executePullSource(
         }
 
         // Show file tree for the source directory
-        const selectedFiles = await fileTreeProvider.startSelection(sourceDir);
+        let selectedFiles = await fileTreeProvider.startSelection(sourceDir);
 
         if (selectedFiles.length === 0) {
             vscode.window.showWarningMessage('No files selected.');
@@ -466,11 +475,24 @@ export async function executePullSource(
 
         if (secretFindings.length > 0) {
             const proceed = await vscode.window.showWarningMessage(
-                `${secretFindings.length} potential secret(s) detected. Continue?`,
+                `${secretFindings.length} potential secret(s) detected. Check Output panel for details.`,
                 { modal: true },
-                'Continue', 'Cancel'
+                'Continue anyway',
+                'Remove files with secrets',
+                'Cancel'
             );
-            if (proceed !== 'Continue') { return; }
+
+            if (proceed === 'Remove files with secrets') {
+                const filesWithSecrets = new Set(secretFindings.map(f => f.file));
+                selectedFiles = selectedFiles.filter(f => !filesWithSecrets.has(f));
+                if (selectedFiles.length === 0) {
+                    vscode.window.showWarningMessage('All selected files contained secrets. Operation cancelled.');
+                    return;
+                }
+                vscode.window.showInformationMessage(`Removed ${filesWithSecrets.size} file(s) with secrets. Continuing with ${selectedFiles.length} file(s).`);
+            } else if (proceed !== 'Continue anyway') {
+                return;
+            }
         }
 
         // Copy files
@@ -620,7 +642,7 @@ export async function executePullSourceGit(
 
         // Show in file tree for user to confirm/deselect
         const allowedPaths = buildAllowedPaths(absolutePaths, sourceDir);
-        const selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
+        let selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
             precheck: absolutePaths,
             allowedPaths
         });
@@ -638,11 +660,24 @@ export async function executePullSourceGit(
 
         if (secretFindings.length > 0) {
             const proceed = await vscode.window.showWarningMessage(
-                `${secretFindings.length} potential secret(s) detected. Continue?`,
+                `${secretFindings.length} potential secret(s) detected. Check Output panel for details.`,
                 { modal: true },
-                'Continue', 'Cancel'
+                'Continue anyway',
+                'Remove files with secrets',
+                'Cancel'
             );
-            if (proceed !== 'Continue') { return; }
+
+            if (proceed === 'Remove files with secrets') {
+                const filesWithSecrets = new Set(secretFindings.map(f => f.file));
+                selectedFiles = selectedFiles.filter(f => !filesWithSecrets.has(f));
+                if (selectedFiles.length === 0) {
+                    vscode.window.showWarningMessage('All selected files contained secrets. Operation cancelled.');
+                    return;
+                }
+                vscode.window.showInformationMessage(`Removed ${filesWithSecrets.size} file(s) with secrets. Continuing with ${selectedFiles.length} file(s).`);
+            } else if (proceed !== 'Continue anyway') {
+                return;
+            }
         }
 
         // Copy and anonymize
