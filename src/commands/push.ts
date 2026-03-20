@@ -177,7 +177,7 @@ export async function executePush(
 
                 // Get all files from the source subdirectory in the cloaked workspace
                 const sourceSubdir = join(cloakedDir!, targetLabel);
-                const files = getAllFiles(sourceSubdir);
+                const files = getAllFiles(sourceSubdir).filter(f => f.name !== 'AGENTS.md');
 
                 if (files.length === 0) {
                     vscode.window.showWarningMessage('No files found in the cloaked directory.');
@@ -292,7 +292,7 @@ export async function executePushAll(
                     }
 
                     const sourceSubdir = join(cloakedDir!, label);
-                    const files = getAllFiles(sourceSubdir);
+                    const files = getAllFiles(sourceSubdir).filter(f => f.name !== 'AGENTS.md');
 
                     progress.report({
                         message: `${label} (${i + 1}/${sourceLabels.length})`,

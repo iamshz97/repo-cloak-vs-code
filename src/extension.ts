@@ -8,7 +8,6 @@ import { SidebarProvider } from './views/sidebar-provider';
 import { FileTreeProvider } from './views/file-tree-provider';
 import { executePull, executePullSource, executePullSourceGit } from './commands/pull';
 import { executePush, executePushAll } from './commands/push';
-import { executeSync, executeSyncSource } from './commands/sync';
 import {
     hasMapping, loadRawMapping,
     removeSourceFromMapping, saveMapping, getSourceLabels
@@ -75,20 +74,7 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // ─── Sync ───────────────────────────────────────────────────────────────
-    context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.sync', () => {
-            executeSync(sidebarProvider, outputChannel);
-        })
-    );
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.syncSource', (label?: string) => {
-            if (label) {
-                executeSyncSource(label, sidebarProvider, outputChannel);
-            }
-        })
-    );
 
     // ─── Source management ──────────────────────────────────────────────────
     context.subscriptions.push(

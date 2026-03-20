@@ -41,12 +41,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'pushAll':
                     vscode.commands.executeCommand('repo-cloak.pushAll');
                     break;
-                case 'sync':
-                    vscode.commands.executeCommand('repo-cloak.sync');
-                    break;
-                case 'syncSource':
-                    vscode.commands.executeCommand('repo-cloak.syncSource', message.label);
-                    break;
+
                 case 'addSource':
                     vscode.commands.executeCommand('repo-cloak.addSource');
                     break;
@@ -120,9 +115,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                             <button class="icon-btn" onclick="send('pullSourceGit','${label}')" title="Pull from Git changes">
                                 <span class="codicon codicon-git-compare"></span>
                             </button>
-                            <button class="icon-btn" onclick="send('syncSource','${label}')" title="Sync">
-                                <span class="codicon codicon-sync"></span>
-                            </button>
+
                             <button class="icon-btn" onclick="send('pullSource','${label}')" title="Pull more files">
                                 <span class="codicon codicon-cloud-download"></span>
                             </button>
@@ -348,11 +341,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         <button class="action-btn" onclick="send('push')">
             <span class="codicon codicon-cloud-upload"></span> Push
         </button>
-        ${hasSession ? `
-        <button class="action-btn" onclick="send('sync')">
-            <span class="codicon codicon-sync"></span> Sync
-        </button>
-        ` : ''}
+
     </div>
 
     <div class="status-bar ${hasSession ? 'active' : ''}">

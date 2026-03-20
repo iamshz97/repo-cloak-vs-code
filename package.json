@@ -64,11 +64,7 @@
         "title": "Repo Cloak: Push All Sources",
         "icon": "$(repo-push)"
       },
-      {
-        "command": "repo-cloak.sync",
-        "title": "Repo Cloak: Sync — Re-pull All Files",
-        "icon": "$(sync)"
-      },
+
       {
         "command": "repo-cloak.addSource",
         "title": "Repo Cloak: Add Source Repository",
@@ -99,11 +95,7 @@
         "title": "Repo Cloak: Pull Files for Source",
         "icon": "$(cloud-download)"
       },
-      {
-        "command": "repo-cloak.syncSource",
-        "title": "Repo Cloak: Sync Source",
-        "icon": "$(sync)"
-      },
+
       {
         "command": "repo-cloak.pullSourceGit",
         "title": "Repo Cloak: Pull from Git Changes",
