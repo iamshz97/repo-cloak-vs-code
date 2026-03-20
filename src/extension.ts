@@ -6,7 +6,7 @@
 import * as vscode from 'vscode';
 import { SidebarProvider } from './views/sidebar-provider';
 import { FileTreeProvider } from './views/file-tree-provider';
-import { executePull, executePullSource } from './commands/pull';
+import { executePull, executePullSource, executePullSourceGit } from './commands/pull';
 import { executePush, executePushAll } from './commands/push';
 import { executeSync, executeSyncSource } from './commands/sync';
 import {
@@ -52,6 +52,13 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.pullSource', (label?: string) => {
             executePullSource(label, fileTreeProvider, sidebarProvider, outputChannel);
+        })
+    );
+
+    // Pull from Git changes for a specific source
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.pullSourceGit', (label?: string) => {
+            executePullSourceGit(label, fileTreeProvider, sidebarProvider, outputChannel);
         })
     );
 

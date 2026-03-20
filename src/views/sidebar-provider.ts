@@ -56,6 +56,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'removeSource':
                     vscode.commands.executeCommand('repo-cloak.removeSource', message.label);
                     break;
+                case 'pullSourceGit':
+                    vscode.commands.executeCommand('repo-cloak.pullSourceGit', message.label);
+                    break;
             }
         });
 
@@ -114,13 +117,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                             <span class="list-item-desc">${fileCount} files</span>
                         </div>
                         <div class="list-item-actions">
-                            <button class="icon-btn" onclick="send('syncSource','${label}')" title="Sync this source">
+                            <button class="icon-btn" onclick="send('pullSourceGit','${label}')" title="Pull from Git changes">
+                                <span class="codicon codicon-git-compare"></span>
+                            </button>
+                            <button class="icon-btn" onclick="send('syncSource','${label}')" title="Sync">
                                 <span class="codicon codicon-sync"></span>
                             </button>
                             <button class="icon-btn" onclick="send('pullSource','${label}')" title="Pull more files">
                                 <span class="codicon codicon-cloud-download"></span>
                             </button>
-                            <button class="icon-btn danger" onclick="send('removeSource','${label}')" title="Remove source">
+                            <button class="icon-btn danger" onclick="send('removeSource','${label}')" title="Remove">
                                 <span class="codicon codicon-trash"></span>
                             </button>
                         </div>
