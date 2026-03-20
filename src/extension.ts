@@ -1,20 +1,19 @@
 /**
  * Repo Cloak — VS Code Extension Entry Point
- * 🎭 Selectively extract and anonymize files from repositories
+ * Selectively extract and anonymize files from repositories
  */
 
 import * as vscode from 'vscode';
 import { SidebarProvider } from './views/sidebar-provider';
 import { FileTreeProvider } from './views/file-tree-provider';
-import { executePull } from './commands/pull';
+import { executePull, executePullSource } from './commands/pull';
 import { executePush, executePushAll } from './commands/push';
-import { executeSync } from './commands/sync';
+import { executeSync, executeSyncSource } from './commands/sync';
 import {
-    hasMapping, loadMapping, loadRawMapping, decryptMappingV2,
-    removeSourceFromMapping, saveMapping, getSourceLabels, MappingV2
+    hasMapping, loadRawMapping,
+    removeSourceFromMapping, saveMapping, getSourceLabels
 } from './core/mapper';
-import { hasSecret, getOrCreateSecret, encryptReplacements } from './core/crypto';
-import { Replacement } from './core/anonymizer';
+import { getOrCreateSecret, encryptReplacements } from './core/crypto';
 
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Repo Cloak');
@@ -34,7 +33,6 @@ export function activate(context: vscode.ExtensionContext) {
     });
     fileTreeProvider.setTreeView(treeView);
 
-    // Handle checkbox changes
     treeView.onDidChangeCheckboxState((e) => {
         for (const [item, state] of e.items) {
             fileTreeProvider.handleCheckboxChange(item, state);
@@ -43,44 +41,55 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(treeView);
 
-    // ─── Commands ───────────────────────────────────────────────────────────
-
-    // Pull
+    // ─── Pull ───────────────────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.pull', () => {
             executePull(fileTreeProvider, sidebarProvider, outputChannel);
         })
     );
 
-    // Push (single source)
+    // Pull for a specific source (re-pull / add more files)
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.pullSource', (label?: string) => {
+            executePullSource(label, fileTreeProvider, sidebarProvider, outputChannel);
+        })
+    );
+
+    // ─── Push ───────────────────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.push', () => {
             executePush(sidebarProvider, outputChannel);
         })
     );
 
-    // Push All
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.pushAll', () => {
             executePushAll(sidebarProvider, outputChannel);
         })
     );
 
-    // Sync
+    // ─── Sync ───────────────────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.sync', () => {
             executeSync(sidebarProvider, outputChannel);
         })
     );
 
-    // Add Source (triggers Pull flow)
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.syncSource', (label?: string) => {
+            if (label) {
+                executeSyncSource(label, sidebarProvider, outputChannel);
+            }
+        })
+    );
+
+    // ─── Source management ──────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.addSource', () => {
             executePull(fileTreeProvider, sidebarProvider, outputChannel);
         })
     );
 
-    // Remove Source
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.removeSource', async (label?: string) => {
             const cloakedDir = findCloakedDirectory();
@@ -104,21 +113,20 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             const confirm = await vscode.window.showWarningMessage(
-                `Remove source "${label}" from the mapping? (Files in the cloaked directory will NOT be deleted)`,
+                `Remove source "${label}" from the mapping? Files in the cloaked directory will not be deleted.`,
                 { modal: true },
                 'Remove'
             );
-
             if (confirm !== 'Remove') { return; }
 
             mapping = removeSourceFromMapping(mapping, label);
             saveMapping(cloakedDir, mapping);
             sidebarProvider.refresh();
-            vscode.window.showInformationMessage(`✓ Removed source "${label}"`);
+            vscode.window.showInformationMessage(`Removed source "${label}"`);
         })
     );
 
-    // Add Replacement
+    // ─── Replacements ───────────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.addReplacement', async () => {
             const cloakedDir = findCloakedDirectory();
@@ -157,32 +165,31 @@ export function activate(context: vscode.ExtensionContext) {
 
             saveMapping(cloakedDir, mapping);
             sidebarProvider.refresh();
-            vscode.window.showInformationMessage(`✓ Added replacement: "${original}" → "${replacement}"`);
+            vscode.window.showInformationMessage(`Added replacement: "${original}" \u2192 "${replacement}"`);
         })
     );
 
-    // File Tree: Confirm Selection
+    // ─── File tree controls ─────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.confirmFileSelection', () => {
             fileTreeProvider.confirmSelection();
         })
     );
 
-    // File Tree: Cancel Selection
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.cancelFileSelection', () => {
             fileTreeProvider.cancelSelection();
         })
     );
 
-    // ─── Auto-refresh on workspace changes ──────────────────────────────────
+    // ─── Auto-refresh ───────────────────────────────────────────────────────
     const watcher = vscode.workspace.createFileSystemWatcher('**/.repo-cloak-map.json');
     watcher.onDidChange(() => sidebarProvider.refresh());
     watcher.onDidCreate(() => sidebarProvider.refresh());
     watcher.onDidDelete(() => sidebarProvider.refresh());
     context.subscriptions.push(watcher);
 
-    outputChannel.appendLine('🎭 Repo Cloak extension activated');
+    outputChannel.appendLine('Repo Cloak extension activated');
 }
 
 export function deactivate() { }

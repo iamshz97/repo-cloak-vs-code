@@ -1,6 +1,7 @@
 /**
  * Pull Command
- * Extract files from a source repo, scan for secrets, anonymize, and save to cloaked workspace
+ * Extract files from a source repo, scan for secrets, anonymize, and save to cloaked workspace.
+ * Supports: full pull, per-source pull (add more files to existing source), force pull.
  */
 
 import * as vscode from 'vscode';
@@ -15,7 +16,8 @@ import { getAgentsMarkdown } from '../core/agents-template';
 import { isGitRepo, getChangedFiles, getRecentCommits, getFilesChangedInCommits } from '../core/git';
 import {
     hasMapping, loadRawMapping, createSingleSourceMapping, addSourceToMapping,
-    mergeFilesIntoSource, saveMapping, decryptMappingV2, MappingV2, getSourceLabels
+    mergeFilesIntoSource, saveMapping, decryptMappingV2, MappingV2, getSourceLabels,
+    getSourceByLabel
 } from '../core/mapper';
 import { hasSecret, getOrCreateSecret, decryptReplacements } from '../core/crypto';
 import { addSourcePath, addDestPath } from '../core/path-cache';
@@ -222,7 +224,7 @@ export async function executePull(
 
         if (secretFindings.length > 0) {
             outputChannel.clear();
-            outputChannel.appendLine('⚠️  POTENTIAL SENSITIVE DATA DETECTED\n');
+            outputChannel.appendLine('[warn] Potential sensitive data detected\n');
 
             const findingsByFile = secretFindings.reduce((acc, finding) => {
                 const relPath = relative(sourceDir, finding.file);
@@ -240,14 +242,14 @@ export async function executePull(
             outputChannel.show();
 
             const proceed = await vscode.window.showWarningMessage(
-                `⚠️ ${secretFindings.length} potential secret(s) detected! Check the Output panel for details.`,
+                `${secretFindings.length} potential secret(s) detected. Check Output panel for details.`,
                 { modal: true },
                 'Continue anyway',
                 'Cancel'
             );
 
             if (proceed !== 'Continue anyway') {
-                vscode.window.showInformationMessage('Operation cancelled to protect sensitive data.');
+                vscode.window.showInformationMessage('Operation cancelled.');
                 return;
             }
         }
@@ -306,15 +308,15 @@ export async function executePull(
                     replacements
                 );
 
-                outputChannel.appendLine(`\n✓ Extracted ${results.copied} files`);
+                outputChannel.appendLine(`\n[done] Extracted ${results.copied} files`);
                 if (results.pathsRenamed > 0) {
-                    outputChannel.appendLine(`  📁 ${results.pathsRenamed} paths renamed`);
+                    outputChannel.appendLine(`  ${results.pathsRenamed} paths renamed`);
                 }
                 if (results.transformed > 0) {
-                    outputChannel.appendLine(`  📝 ${results.transformed} files had content replaced`);
+                    outputChannel.appendLine(`  ${results.transformed} files had content replaced`);
                 }
                 if (results.errors.length > 0) {
-                    outputChannel.appendLine(`  ⚠️ ${results.errors.length} errors`);
+                    outputChannel.appendLine(`  [warn] ${results.errors.length} errors`);
                     results.errors.forEach(e => outputChannel.appendLine(`    - ${e.file}: ${e.error}`));
                 }
             }
@@ -367,7 +369,7 @@ export async function executePull(
 
         // ── Done! ───────────────────────────────────────────────────────────
         sidebarProvider.refresh();
-        vscode.window.showInformationMessage(`✓ Extracted ${selectedFiles.length} files from "${sourceLabel}"`);
+        vscode.window.showInformationMessage(`Extracted ${selectedFiles.length} files from "${sourceLabel}"`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Pull failed: ${(error as Error).message}`);
@@ -397,10 +399,126 @@ async function promptReplacements(): Promise<Replacement[]> {
         if (!replacement) { break; }
 
         replacements.push({ original: original.trim(), replacement: replacement.trim() });
-        vscode.window.showInformationMessage(`✓ "${original}" → "${replacement}"`);
+        vscode.window.showInformationMessage(`Added: "${original}" \u2192 "${replacement}"`);
     }
 
     return replacements;
+}
+
+/**
+ * Pull more files into an existing source (per-source pull from sidebar)
+ */
+export async function executePullSource(
+    label: string | undefined,
+    fileTreeProvider: FileTreeProvider,
+    sidebarProvider: SidebarProvider,
+    outputChannel: vscode.OutputChannel
+): Promise<void> {
+    if (!label) {
+        // Fall back to full pull
+        return executePull(fileTreeProvider, sidebarProvider, outputChannel);
+    }
+
+    try {
+        const cloakedDir = findCloakedDirectory();
+        if (!cloakedDir) {
+            vscode.window.showErrorMessage('No cloaked workspace found.');
+            return;
+        }
+
+        const rawMapping = loadRawMapping(cloakedDir);
+        if (!rawMapping) { return; }
+
+        let decryptedMapping = rawMapping;
+        let replacements: Replacement[] = [];
+        if (rawMapping.encrypted && hasSecret()) {
+            try {
+                decryptedMapping = decryptMappingV2(rawMapping, getOrCreateSecret());
+                replacements = (decryptedMapping.replacements as Replacement[]).filter(r => r.original);
+            } catch { /* use raw */ }
+        }
+
+        const source = getSourceByLabel(decryptedMapping, label);
+        if (!source) {
+            vscode.window.showErrorMessage(`Source "${label}" not found.`);
+            return;
+        }
+
+        const sourceDir = source.path;
+        if (!sourceDir || !existsSync(sourceDir)) {
+            vscode.window.showWarningMessage(`Source path not accessible: ${sourceDir || '[encrypted]'}`);
+            return;
+        }
+
+        // Show file tree for the source directory
+        const selectedFiles = await fileTreeProvider.startSelection(sourceDir);
+
+        if (selectedFiles.length === 0) {
+            vscode.window.showWarningMessage('No files selected.');
+            return;
+        }
+
+        // Secret scan
+        const secretFindings = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: 'Scanning for sensitive data...' },
+            () => scanFilesForSecrets(selectedFiles)
+        );
+
+        if (secretFindings.length > 0) {
+            const proceed = await vscode.window.showWarningMessage(
+                `${secretFindings.length} potential secret(s) detected. Continue?`,
+                { modal: true },
+                'Continue', 'Cancel'
+            );
+            if (proceed !== 'Continue') { return; }
+        }
+
+        // Copy files
+        const anonymizer = createAnonymizer(replacements);
+        const destBase = join(cloakedDir, label);
+
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: `Adding files to "${label}"...` },
+            async (progress) => {
+                await copyFiles(
+                    selectedFiles, sourceDir, destBase, anonymizer,
+                    (current, total, file) => {
+                        progress.report({ increment: (1 / total) * 100, message: `${current}/${total}` });
+                    },
+                    replacements
+                );
+            }
+        );
+
+        // Update mapping
+        const newFiles = selectedFiles.map(f => {
+            const originalPath = relative(sourceDir, f);
+            let anonymizedPath = join(label, originalPath);
+            for (const { original, replacement } of replacements) {
+                const regex = new RegExp(original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                anonymizedPath = anonymizedPath.replace(regex, replacement);
+            }
+            return { original: relative(sourceDir, f), cloaked: anonymizedPath };
+        });
+
+        const updatedMapping = mergeFilesIntoSource(rawMapping, label, newFiles);
+        saveMapping(cloakedDir, updatedMapping);
+
+        sidebarProvider.refresh();
+        vscode.window.showInformationMessage(`Added ${selectedFiles.length} files to "${label}"`);
+
+    } catch (error) {
+        vscode.window.showErrorMessage(`Pull failed: ${(error as Error).message}`);
+    }
+}
+
+function findCloakedDirectory(): string | null {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) { return null; }
+    for (const folder of workspaceFolders) {
+        if (hasMapping(folder.uri.fsPath)) { return folder.uri.fsPath; }
+    }
+    return null;
 }
 
 /**

@@ -72,7 +72,7 @@ export async function executePush(
                 sourceLabels.map(label => {
                     const source = getSourceByLabel(mapping, label);
                     return {
-                        label: `📦 ${label}`,
+                        label: label,
                         description: `${source?.files.length || 0} files → ${source?.path || '[encrypted]'}`,
                         value: label
                     };
@@ -91,16 +91,16 @@ export async function executePush(
 
         // ── Step 4: Show mapping info ───────────────────────────────────────
         outputChannel.clear();
-        outputChannel.appendLine(`📦 Source: ${targetLabel}`);
-        outputChannel.appendLine(`   Original path: ${source.path}`);
-        outputChannel.appendLine(`   Files: ${source.files.length}`);
-        outputChannel.appendLine(`   Replacements: ${mapping.replacements?.length || 0}`);
+        outputChannel.appendLine(`Source: ${targetLabel}`);
+        outputChannel.appendLine(`  Original path: ${source.path}`);
+        outputChannel.appendLine(`  Files: ${source.files.length}`);
+        outputChannel.appendLine(`  Replacements: ${mapping.replacements?.length || 0}`);
 
         if (mapping.replacements && mapping.replacements.length > 0) {
-            outputChannel.appendLine('   Replacements to reverse:');
+            outputChannel.appendLine('  Replacements to reverse:');
             for (const r of mapping.replacements as any[]) {
                 const orig = r.original || '[encrypted]';
-                outputChannel.appendLine(`     "${r.replacement}" → "${orig}"`);
+                outputChannel.appendLine(`    "${r.replacement}" -> "${orig}"`);
             }
         }
 
@@ -198,22 +198,22 @@ export async function executePush(
                     reversedReplacements
                 );
 
-                outputChannel.appendLine(`\n✓ Restored ${results.copied} files`);
+                outputChannel.appendLine(`\n[done] Restored ${results.copied} files`);
                 if (results.pathsRenamed > 0) {
-                    outputChannel.appendLine(`  📁 ${results.pathsRenamed} paths restored`);
+                    outputChannel.appendLine(`  ${results.pathsRenamed} paths restored`);
                 }
                 if (results.transformed > 0) {
-                    outputChannel.appendLine(`  📝 ${results.transformed} files had content restored`);
+                    outputChannel.appendLine(`  ${results.transformed} files had content restored`);
                 }
                 if (results.errors.length > 0) {
-                    outputChannel.appendLine(`  ⚠️ ${results.errors.length} errors`);
+                    outputChannel.appendLine(`  [warn] ${results.errors.length} errors`);
                     results.errors.forEach(e => outputChannel.appendLine(`    - ${e.file}: ${e.error}`));
                 }
             }
         );
 
         sidebarProvider.refresh();
-        vscode.window.showInformationMessage(`✓ Restored "${targetLabel}" to ${destDir}`);
+        vscode.window.showInformationMessage(`Restored "${targetLabel}" to ${destDir}`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Push failed: ${(error as Error).message}`);
@@ -254,7 +254,7 @@ export async function executePushAll(
         // Show summary
         const sourceInfo = sourceLabels.map(label => {
             const source = getSourceByLabel(mapping, label);
-            return `  • ${label} → ${source?.path || '[unknown]'} (${source?.files.length || 0} files)`;
+            return `  ${label} -> ${source?.path || '[unknown]'} (${source?.files.length || 0} files)`;
         }).join('\n');
 
         const confirm = await vscode.window.showInformationMessage(
@@ -287,7 +287,7 @@ export async function executePushAll(
                     const source = getSourceByLabel(mapping, label)!;
 
                     if (!source.path || !existsSync(source.path)) {
-                        outputChannel.appendLine(`⚠️ Skipping "${label}" — original path not found: ${source.path}`);
+                        outputChannel.appendLine(`[warn] Skipping "${label}" — original path not found: ${source.path}`);
                         continue;
                     }
 
@@ -309,15 +309,15 @@ export async function executePushAll(
                     );
 
                     totalRestored += results.copied;
-                    outputChannel.appendLine(`✓ ${label}: ${results.copied} files restored to ${source.path}`);
+                    outputChannel.appendLine(`[done] ${label}: ${results.copied} files restored to ${source.path}`);
                 }
 
-                outputChannel.appendLine(`\n✓ Total: ${totalRestored} files restored across ${sourceLabels.length} sources`);
+                outputChannel.appendLine(`\n[done] Total: ${totalRestored} files restored across ${sourceLabels.length} sources`);
             }
         );
 
         sidebarProvider.refresh();
-        vscode.window.showInformationMessage(`✓ All ${sourceLabels.length} sources restored`);
+        vscode.window.showInformationMessage(`All ${sourceLabels.length} sources restored`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Push All failed: ${(error as Error).message}`);

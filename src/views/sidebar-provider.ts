@@ -1,6 +1,6 @@
 /**
  * Sidebar Provider
- * Webview-based sidebar panel showing session status, sources, replacements, and action buttons
+ * Webview sidebar — clean, minimal, Microsoft-standard design
  */
 
 import * as vscode from 'vscode';
@@ -32,6 +32,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'pull':
                     vscode.commands.executeCommand('repo-cloak.pull');
                     break;
+                case 'pullSource':
+                    vscode.commands.executeCommand('repo-cloak.pullSource', message.label);
+                    break;
                 case 'push':
                     vscode.commands.executeCommand('repo-cloak.push');
                     break;
@@ -40,6 +43,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'sync':
                     vscode.commands.executeCommand('repo-cloak.sync');
+                    break;
+                case 'syncSource':
+                    vscode.commands.executeCommand('repo-cloak.syncSource', message.label);
                     break;
                 case 'addSource':
                     vscode.commands.executeCommand('repo-cloak.addSource');
@@ -56,9 +62,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this.refresh();
     }
 
-    /**
-     * Refresh the sidebar — re-detect mapping from workspace
-     */
     refresh(): void {
         this._detectMapping();
         this._updateView();
@@ -76,8 +79,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 const raw = loadRawMapping(folder.uri.fsPath);
                 if (raw) {
                     this._destDir = folder.uri.fsPath;
-
-                    // Try to decrypt
                     if (raw.encrypted && hasSecret()) {
                         try {
                             this._mapping = decryptMappingV2(raw, getOrCreateSecret());
@@ -104,41 +105,45 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const sourcesHtml = m && m.sources && m.sources.length > 0
             ? m.sources.map(s => {
                 const fileCount = s.files?.length || 0;
+                const label = escapeHtml(s.label);
                 return `
-                    <div class="source-item">
-                        <span class="source-icon">📦</span>
-                        <span class="source-label">${escapeHtml(s.label)}</span>
-                        <span class="source-count">${fileCount} files</span>
-                        <button class="icon-btn danger" onclick="removeSource('${escapeHtml(s.label)}')" title="Remove source">✕</button>
-                    </div>
-                `;
+                    <div class="list-item">
+                        <div class="list-item-content">
+                            <span class="codicon codicon-package"></span>
+                            <span class="list-item-label">${label}</span>
+                            <span class="list-item-desc">${fileCount} files</span>
+                        </div>
+                        <div class="list-item-actions">
+                            <button class="icon-btn" onclick="send('syncSource','${label}')" title="Sync this source">
+                                <span class="codicon codicon-sync"></span>
+                            </button>
+                            <button class="icon-btn" onclick="send('pullSource','${label}')" title="Pull more files">
+                                <span class="codicon codicon-cloud-download"></span>
+                            </button>
+                            <button class="icon-btn danger" onclick="send('removeSource','${label}')" title="Remove source">
+                                <span class="codicon codicon-trash"></span>
+                            </button>
+                        </div>
+                    </div>`;
             }).join('')
-            : '<div class="empty-state">No sources configured</div>';
+            : '<p class="empty">No sources added yet</p>';
 
         const replacementsHtml = m && m.replacements && m.replacements.length > 0
             ? (m.replacements as any[]).map(r => {
-                const orig = r.encrypted ? '[encrypted]' : escapeHtml(r.original || '');
+                const orig = r.encrypted ? 'encrypted' : escapeHtml(r.original || '');
                 return `
-                    <div class="replacement-item">
-                        <span class="replacement-from">"${orig}"</span>
-                        <span class="replacement-arrow">→</span>
-                        <span class="replacement-to">"${escapeHtml(r.replacement)}"</span>
-                    </div>
-                `;
+                    <div class="list-item replacement">
+                        <code class="from">${orig}</code>
+                        <span class="arrow">&rarr;</span>
+                        <code class="to">${escapeHtml(r.replacement)}</code>
+                    </div>`;
             }).join('')
-            : '<div class="empty-state">No replacements</div>';
+            : '<p class="empty">No replacements</p>';
 
-        const statusHtml = m
-            ? `<div class="status active">
-                <span class="status-dot"></span>
-                <span>Active workspace</span>
-               </div>
-               <div class="stat-grid">
-                   <div class="stat"><span class="stat-num">${m.stats?.totalSources || m.sources?.length || 0}</span><span class="stat-label">sources</span></div>
-                   <div class="stat"><span class="stat-num">${m.stats?.totalFiles || 0}</span><span class="stat-label">files</span></div>
-                   <div class="stat"><span class="stat-num">${m.stats?.replacementsCount || m.replacements?.length || 0}</span><span class="stat-label">replacements</span></div>
-               </div>`
-            : '<div class="status inactive"><span class="status-dot"></span><span>No active session</span></div>';
+        const hasSession = !!m;
+        const totalSources = m?.stats?.totalSources || m?.sources?.length || 0;
+        const totalFiles = m?.stats?.totalFiles || 0;
+        const totalReplacements = m?.stats?.replacementsCount || m?.replacements?.length || 0;
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -146,180 +151,246 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
+    :root {
+        --section-spacing: 14px;
+        --item-radius: 3px;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
         font-family: var(--vscode-font-family);
         font-size: var(--vscode-font-size);
         color: var(--vscode-foreground);
-        padding: 12px;
+        padding: 0 12px 12px;
+        line-height: 1.4;
     }
 
-    .header {
+    /* ── Actions ─── */
+    .action-bar {
+        display: flex;
+        gap: 4px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border));
+        margin-bottom: var(--section-spacing);
+    }
+    .action-btn {
+        flex: 1;
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-bottom: 16px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--vscode-widget-border);
-    }
-    .header h2 { font-size: 13px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
-    .header .logo { font-size: 18px; }
-
-    .btn-row {
-        display: flex;
-        gap: 6px;
-        margin-bottom: 16px;
-    }
-    .btn {
-        flex: 1;
-        padding: 6px 10px;
-        border: 1px solid var(--vscode-button-border, var(--vscode-widget-border));
-        background: var(--vscode-button-secondaryBackground);
-        color: var(--vscode-button-secondaryForeground);
-        border-radius: 4px;
+        justify-content: center;
+        gap: 5px;
+        padding: 5px 8px;
+        background: transparent;
+        color: var(--vscode-foreground);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: var(--item-radius);
         cursor: pointer;
+        font: inherit;
         font-size: 11px;
-        font-family: inherit;
-        text-align: center;
-        transition: background 0.15s;
+        transition: background 0.1s, border-color 0.1s;
     }
-    .btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
-    .btn.primary {
-        background: var(--vscode-button-background);
-        color: var(--vscode-button-foreground);
+    .action-btn:hover {
+        background: var(--vscode-toolbar-hoverBackground);
+        border-color: var(--vscode-focusBorder);
     }
-    .btn.primary:hover { background: var(--vscode-button-hoverBackground); }
 
-    .section { margin-bottom: 16px; }
+    /* ── Status ─── */
+    .status-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: var(--section-spacing);
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+    }
+    .status-dot {
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: var(--vscode-descriptionForeground);
+    }
+    .status-bar.active .status-dot {
+        background: var(--vscode-testing-iconPassed, #73c991);
+    }
+    .stats {
+        display: flex;
+        gap: 16px;
+        margin-bottom: var(--section-spacing);
+    }
+    .stat {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+    }
+    .stat strong {
+        color: var(--vscode-foreground);
+        font-weight: 600;
+    }
+
+    /* ── Sections ─── */
+    .section { margin-bottom: var(--section-spacing); }
+    .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 4px;
+    }
     .section-title {
         font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: var(--vscode-descriptionForeground);
-        margin-bottom: 8px;
+        letter-spacing: 1px;
+        color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
     }
-
-    .status {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-        margin-bottom: 8px;
-    }
-    .status-dot {
-        width: 8px; height: 8px;
-        border-radius: 50%;
-        display: inline-block;
-    }
-    .status.active .status-dot { background: #4ec9b0; }
-    .status.inactive .status-dot { background: var(--vscode-descriptionForeground); }
-
-    .stat-grid {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 8px;
-    }
-    .stat { display: flex; flex-direction: column; align-items: center; }
-    .stat-num { font-size: 18px; font-weight: 700; color: var(--vscode-foreground); }
-    .stat-label { font-size: 10px; color: var(--vscode-descriptionForeground); text-transform: uppercase; }
-
-    .source-item {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 6px;
-        border-radius: 3px;
-        margin-bottom: 2px;
-    }
-    .source-item:hover { background: var(--vscode-list-hoverBackground); }
-    .source-icon { font-size: 14px; }
-    .source-label { flex: 1; font-size: 12px; }
-    .source-count { font-size: 11px; color: var(--vscode-descriptionForeground); }
-
-    .replacement-item {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        padding: 3px 6px;
+    .section-action {
         font-size: 11px;
-        font-family: var(--vscode-editor-font-family);
-        margin-bottom: 2px;
-    }
-    .replacement-from { color: var(--vscode-errorForeground, #f44747); }
-    .replacement-arrow { color: var(--vscode-descriptionForeground); }
-    .replacement-to { color: var(--vscode-debugIcon-startForeground, #89d185); }
-
-    .empty-state {
-        font-size: 11px;
-        color: var(--vscode-descriptionForeground);
-        font-style: italic;
-        padding: 4px 6px;
-    }
-
-    .icon-btn {
+        color: var(--vscode-textLink-foreground);
         background: none;
         border: none;
         cursor: pointer;
-        font-size: 12px;
-        color: var(--vscode-descriptionForeground);
-        padding: 2px 4px;
-        border-radius: 3px;
-        opacity: 0;
-        transition: opacity 0.15s;
+        font: inherit;
+        padding: 0;
     }
-    .source-item:hover .icon-btn { opacity: 1; }
+    .section-action:hover { text-decoration: underline; }
+
+    /* ── List items ─── */
+    .list-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 3px 6px;
+        border-radius: var(--item-radius);
+        min-height: 24px;
+    }
+    .list-item:hover {
+        background: var(--vscode-list-hoverBackground);
+    }
+    .list-item-content {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        flex: 1;
+    }
+    .list-item-label {
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .list-item-desc {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        white-space: nowrap;
+    }
+    .list-item-actions {
+        display: flex;
+        gap: 2px;
+        opacity: 0;
+        transition: opacity 0.1s;
+    }
+    .list-item:hover .list-item-actions { opacity: 1; }
+
+    /* ── Replacements ─── */
+    .replacement {
+        gap: 4px;
+        font-size: 11px;
+    }
+    .replacement code {
+        font-family: var(--vscode-editor-font-family);
+        font-size: 11px;
+        padding: 1px 4px;
+        border-radius: 2px;
+        background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.1));
+    }
+    .replacement .from { color: var(--vscode-errorForeground); }
+    .replacement .to { color: var(--vscode-testing-iconPassed, #73c991); }
+    .replacement .arrow {
+        color: var(--vscode-descriptionForeground);
+        font-size: 10px;
+    }
+
+    /* ── Icon buttons ─── */
+    .icon-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px; height: 22px;
+        background: none;
+        border: none;
+        border-radius: var(--item-radius);
+        cursor: pointer;
+        color: var(--vscode-foreground);
+    }
+    .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
     .icon-btn.danger:hover { color: var(--vscode-errorForeground); }
 
-    .add-link {
+    .codicon { font-size: 14px; }
+
+    /* ── Empty ─── */
+    .empty {
         font-size: 11px;
-        color: var(--vscode-textLink-foreground);
-        cursor: pointer;
+        color: var(--vscode-descriptionForeground);
         padding: 4px 6px;
-        display: inline-block;
+        font-style: italic;
     }
-    .add-link:hover { text-decoration: underline; }
 </style>
+<link href="https://unpkg.com/@vscode/codicons@0.0.36/dist/codicon.css" rel="stylesheet">
 </head>
 <body>
-    <div class="header">
-        <span class="logo">🎭</span>
-        <h2>Repo Cloak</h2>
+    <div class="action-bar">
+        <button class="action-btn" onclick="send('pull')">
+            <span class="codicon codicon-cloud-download"></span> Pull
+        </button>
+        <button class="action-btn" onclick="send('push')">
+            <span class="codicon codicon-cloud-upload"></span> Push
+        </button>
+        ${hasSession ? `
+        <button class="action-btn" onclick="send('sync')">
+            <span class="codicon codicon-sync"></span> Sync
+        </button>
+        ` : ''}
     </div>
 
-    <div class="btn-row">
-        <button class="btn primary" onclick="send('pull')">⬇ Pull</button>
-        <button class="btn primary" onclick="send('push')">⬆ Push</button>
+    <div class="status-bar ${hasSession ? 'active' : ''}">
+        <span class="status-dot"></span>
+        <span>${hasSession ? 'Active workspace' : 'No active session'}</span>
     </div>
 
-    <div class="section">
-        <div class="section-title">Status</div>
-        ${statusHtml}
-    </div>
-
-    ${m ? `
-    <div class="btn-row">
-        <button class="btn" onclick="send('sync')">⟳ Sync All</button>
-        <button class="btn" onclick="send('pushAll')">⬆ Push All</button>
+    ${hasSession ? `
+    <div class="stats">
+        <span class="stat"><strong>${totalSources}</strong> sources</span>
+        <span class="stat"><strong>${totalFiles}</strong> files</span>
+        <span class="stat"><strong>${totalReplacements}</strong> replacements</span>
     </div>
     ` : ''}
 
     <div class="section">
-        <div class="section-title">Sources</div>
+        <div class="section-header">
+            <span class="section-title">Sources</span>
+            <button class="section-action" onclick="send('addSource')">Add</button>
+        </div>
         ${sourcesHtml}
-        <span class="add-link" onclick="send('addSource')">+ Add source</span>
     </div>
 
     <div class="section">
-        <div class="section-title">Replacements</div>
+        <div class="section-header">
+            <span class="section-title">Replacements</span>
+            <button class="section-action" onclick="send('addReplacement')">Add</button>
+        </div>
         ${replacementsHtml}
-        <span class="add-link" onclick="send('addReplacement')">+ Add replacement</span>
     </div>
+
+    ${hasSession ? `
+    <div class="action-bar" style="border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); border-bottom: none; padding-top: 10px;">
+        <button class="action-btn" onclick="send('pushAll')">
+            <span class="codicon codicon-repo-push"></span> Push All
+        </button>
+    </div>
+    ` : ''}
 
     <script>
         const vscode = acquireVsCodeApi();
-        function send(cmd) { vscode.postMessage({ command: cmd }); }
-        function removeSource(label) { vscode.postMessage({ command: 'removeSource', label }); }
+        function send(cmd, label) {
+            vscode.postMessage({ command: cmd, label: label || undefined });
+        }
     </script>
 </body>
 </html>`;
