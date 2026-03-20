@@ -6,7 +6,7 @@
 import * as vscode from 'vscode';
 import { readdirSync } from 'fs';
 import { join, relative } from 'path';
-import { shouldIgnore } from '../core/scanner';
+import { shouldIgnore, getAllFiles } from '../core/scanner';
 
 export class FileTreeItem extends vscode.TreeItem {
     constructor(
@@ -42,6 +42,9 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     get rootPath(): string | null {
         return this._rootPath;
     }
+
+    private _searchedPaths: Set<string> | null = null;
+    private _searchFilter: string = '';
 
     get checkedPaths(): Set<string> {
         return this._checkedPaths;
@@ -82,6 +85,8 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         this._checkedPaths.clear();
         this._allowedPaths = null;
         this._precheck = null;
+        this._searchedPaths = null;
+        this._searchFilter = '';
         this._resolveSelection = null;
         this._onDidChangeTreeData.fire();
     }
@@ -99,6 +104,29 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         return new Promise((resolve) => {
             this._resolveSelection = resolve;
         });
+    }
+
+    /**
+     * Apply a text filter to search the tree
+     */
+    setSearchFilter(term: string): void {
+        this._searchFilter = (term || '').trim().toLowerCase();
+        
+        // Let VS Code know if we have an active search (to show/hide clear button)
+        vscode.commands.executeCommand('setContext', 'repo-cloak.fileTreeHasSearch', !!this._searchFilter);
+
+        if (!this._searchFilter || !this._rootPath) {
+            this._searchedPaths = null;
+        } else {
+            this._searchedPaths = new Set<string>();
+            const allFiles = getAllFiles(this._rootPath);
+            for (const f of allFiles) {
+                if (f.relativePath.toLowerCase().includes(this._searchFilter)) {
+                    this._searchedPaths.add(f.absolutePath);
+                }
+            }
+        }
+        this._onDidChangeTreeData.fire();
     }
 
     /**
@@ -242,7 +270,14 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
                     if (shouldIgnore(entry.name)) { return false; }
                     const fullPath = join(dirPath, entry.name);
                     if (this._allowedPaths) {
-                        return this._allowedPaths.has(fullPath) || this._isPathAncestorOfAllowed(fullPath);
+                        if (!this._allowedPaths.has(fullPath) && !this._isPathAncestorOfAllowed(fullPath)) {
+                            return false;
+                        }
+                    }
+                    if (this._searchedPaths) {
+                        if (!this._searchedPaths.has(fullPath) && !this._isPathAncestorOfSearched(fullPath)) {
+                            return false;
+                        }
                     }
                     return true;
                 })
@@ -253,7 +288,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
                         fullPath,
                         entry.isDirectory(),
                         entry.isDirectory()
-                            ? vscode.TreeItemCollapsibleState.Collapsed
+                            ? (this._searchFilter ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
                             : vscode.TreeItemCollapsibleState.None,
                         this._rootPath!
                     );
@@ -267,6 +302,16 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         if (!this._allowedPaths) { return true; }
         for (const allowed of this._allowedPaths) {
             if (allowed.startsWith(dirPath + '/') || allowed.startsWith(dirPath + '\\')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private _isPathAncestorOfSearched(dirPath: string): boolean {
+        if (!this._searchedPaths) { return true; }
+        for (const searched of this._searchedPaths) {
+            if (searched.startsWith(dirPath + '/') || searched.startsWith(dirPath + '\\')) {
                 return true;
             }
         }

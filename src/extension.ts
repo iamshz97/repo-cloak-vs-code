@@ -188,6 +188,24 @@ export function activate(context: vscode.ExtensionContext) {
             fileTreeProvider.cancelSelection();
         })
     );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.searchFileSelection', async () => {
+            const term = await vscode.window.showInputBox({
+                prompt: 'Enter search term to filter files',
+                placeHolder: 'e.g., config, auth, utils'
+            });
+            // undefined means user cancelled; empty string means clear filter
+            if (term !== undefined) {
+                fileTreeProvider.setSearchFilter(term);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.clearFileSelectionSearch', () => {
+            fileTreeProvider.setSearchFilter('');
+        })
+    );
 
     // ─── Auto-refresh ───────────────────────────────────────────────────────
     const watcher = vscode.workspace.createFileSystemWatcher('**/.repo-cloak-map.json');
