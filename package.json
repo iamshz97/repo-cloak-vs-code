@@ -1,0 +1,122 @@
+{
+  "name": "repo-cloak",
+  "displayName": "Repo Cloak",
+  "description": "🎭 Selectively extract and anonymize files from repositories. Pull from multiple repos, anonymize sensitive data, push back — all from VS Code.",
+  "version": "0.1.0",
+  "publisher": "iamshz97",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "anonymize",
+    "extract",
+    "privacy",
+    "ai",
+    "cloak",
+    "sanitize",
+    "repository"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "repo-cloak",
+          "title": "Repo Cloak",
+          "icon": "$(shield)"
+        }
+      ]
+    },
+    "views": {
+      "repo-cloak": [
+        {
+          "type": "webview",
+          "id": "repo-cloak.sidebar",
+          "name": "Dashboard"
+        },
+        {
+          "id": "repo-cloak.fileTree",
+          "name": "File Selection",
+          "when": "repo-cloak.fileTreeVisible"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "repo-cloak.pull",
+        "title": "Repo Cloak: Pull — Extract & Anonymize Files",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "repo-cloak.push",
+        "title": "Repo Cloak: Push — Restore Files",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "repo-cloak.pushAll",
+        "title": "Repo Cloak: Push All Sources",
+        "icon": "$(repo-push)"
+      },
+      {
+        "command": "repo-cloak.sync",
+        "title": "Repo Cloak: Sync — Re-pull All Files",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "repo-cloak.addSource",
+        "title": "Repo Cloak: Add Source Repository",
+        "icon": "$(add)"
+      },
+      {
+        "command": "repo-cloak.removeSource",
+        "title": "Repo Cloak: Remove Source",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "repo-cloak.addReplacement",
+        "title": "Repo Cloak: Add Keyword Replacement",
+        "icon": "$(find-replace)"
+      },
+      {
+        "command": "repo-cloak.confirmFileSelection",
+        "title": "Confirm Selection",
+        "icon": "$(check)"
+      },
+      {
+        "command": "repo-cloak.cancelFileSelection",
+        "title": "Cancel",
+        "icon": "$(close)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "repo-cloak.confirmFileSelection",
+          "when": "view == repo-cloak.fileTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repo-cloak.cancelFileSelection",
+          "when": "view == repo-cloak.fileTree",
+          "group": "navigation@2"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}
