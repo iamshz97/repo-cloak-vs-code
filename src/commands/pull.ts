@@ -512,6 +512,178 @@ export async function executePullSource(
     }
 }
 
+/**
+ * Pull files from Git changes for a specific source (uncommitted or commit-based)
+ */
+export async function executePullSourceGit(
+    label: string | undefined,
+    fileTreeProvider: FileTreeProvider,
+    sidebarProvider: SidebarProvider,
+    outputChannel: vscode.OutputChannel
+): Promise<void> {
+    if (!label) {
+        return executePull(fileTreeProvider, sidebarProvider, outputChannel);
+    }
+
+    try {
+        const cloakedDir = findCloakedDirectory();
+        if (!cloakedDir) {
+            vscode.window.showErrorMessage('No cloaked workspace found.');
+            return;
+        }
+
+        const rawMapping = loadRawMapping(cloakedDir);
+        if (!rawMapping) { return; }
+
+        let decryptedMapping = rawMapping;
+        let replacements: Replacement[] = [];
+        if (rawMapping.encrypted && hasSecret()) {
+            try {
+                decryptedMapping = decryptMappingV2(rawMapping, getOrCreateSecret());
+                replacements = (decryptedMapping.replacements as Replacement[]).filter(r => r.original);
+            } catch { /* use raw */ }
+        }
+
+        const source = getSourceByLabel(decryptedMapping, label);
+        if (!source) {
+            vscode.window.showErrorMessage(`Source "${label}" not found.`);
+            return;
+        }
+
+        const sourceDir = source.path;
+        if (!sourceDir || !existsSync(sourceDir)) {
+            vscode.window.showWarningMessage(`Source path not accessible: ${sourceDir || '[encrypted]'}`);
+            return;
+        }
+
+        if (!isGitRepo(sourceDir)) {
+            vscode.window.showWarningMessage(`"${label}" is not a Git repository.`);
+            return;
+        }
+
+        // Pick Git mode
+        const gitMode = await vscode.window.showQuickPick([
+            { label: '$(git-commit) Uncommitted changes', description: 'Files with pending changes', value: 'uncommitted' },
+            { label: '$(history) Recent commits', description: 'Pick files from commits', value: 'commits' },
+            { label: '$(git-commit) Specific commit ID', description: 'Enter a commit hash', value: 'commit_id' }
+        ], {
+            title: `Git pull for "${label}"`
+        });
+
+        if (!gitMode) { return; }
+
+        let gitFiles: string[] = [];
+
+        if ((gitMode as any).value === 'uncommitted') {
+            gitFiles = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: 'Scanning uncommitted files...' },
+                () => getChangedFiles(sourceDir)
+            );
+        } else if ((gitMode as any).value === 'commits') {
+            const commits = await getRecentCommits(sourceDir, 15);
+            if (commits.length === 0) {
+                vscode.window.showWarningMessage('No commits found.');
+                return;
+            }
+            const selected = await vscode.window.showQuickPick(
+                commits.map(c => ({ label: c.hash, description: c.message, value: c.hash })),
+                { canPickMany: true, title: `Select commits for "${label}"` }
+            );
+            if (!selected || selected.length === 0) { return; }
+            gitFiles = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: 'Fetching files from commits...' },
+                () => getFilesChangedInCommits(sourceDir, selected.map(s => (s as any).value))
+            );
+        } else if ((gitMode as any).value === 'commit_id') {
+            const commitHash = await vscode.window.showInputBox({
+                prompt: 'Enter commit hash',
+                validateInput: v => v.trim() ? null : 'Cannot be empty'
+            });
+            if (!commitHash) { return; }
+            gitFiles = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: `Fetching files from ${commitHash}...` },
+                () => getFilesChangedInCommits(sourceDir, [commitHash.trim()])
+            );
+        }
+
+        if (gitFiles.length === 0) {
+            vscode.window.showWarningMessage('No changed files found.');
+            return;
+        }
+
+        // Resolve to absolute paths
+        const absolutePaths = gitFiles.map(f => resolve(sourceDir, f)).filter(f => existsSync(f));
+        if (absolutePaths.length === 0) {
+            vscode.window.showWarningMessage('None of the changed files exist on disk.');
+            return;
+        }
+
+        // Show in file tree for user to confirm/deselect
+        const allowedPaths = buildAllowedPaths(absolutePaths, sourceDir);
+        const selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
+            precheck: absolutePaths,
+            allowedPaths
+        });
+
+        if (selectedFiles.length === 0) {
+            vscode.window.showWarningMessage('No files selected.');
+            return;
+        }
+
+        // Secret scan
+        const secretFindings = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: 'Scanning for sensitive data...' },
+            () => scanFilesForSecrets(selectedFiles)
+        );
+
+        if (secretFindings.length > 0) {
+            const proceed = await vscode.window.showWarningMessage(
+                `${secretFindings.length} potential secret(s) detected. Continue?`,
+                { modal: true },
+                'Continue', 'Cancel'
+            );
+            if (proceed !== 'Continue') { return; }
+        }
+
+        // Copy and anonymize
+        const anonymizer = createAnonymizer(replacements);
+        const destBase = join(cloakedDir, label);
+
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: `Adding Git changes to "${label}"...` },
+            async (progress) => {
+                await copyFiles(
+                    selectedFiles, sourceDir, destBase, anonymizer,
+                    (current, total) => {
+                        progress.report({ increment: (1 / total) * 100, message: `${current}/${total}` });
+                    },
+                    replacements
+                );
+            }
+        );
+
+        // Update mapping
+        const newFiles = selectedFiles.map(f => {
+            const originalPath = relative(sourceDir, f);
+            let anonymizedPath = join(label, originalPath);
+            for (const { original, replacement } of replacements) {
+                const regex = new RegExp(original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                anonymizedPath = anonymizedPath.replace(regex, replacement);
+            }
+            return { original: relative(sourceDir, f), cloaked: anonymizedPath };
+        });
+
+        const updatedMapping = mergeFilesIntoSource(rawMapping, label, newFiles);
+        saveMapping(cloakedDir, updatedMapping);
+
+        sidebarProvider.refresh();
+        vscode.window.showInformationMessage(`Added ${selectedFiles.length} Git-changed files to "${label}"`);
+
+    } catch (error) {
+        vscode.window.showErrorMessage(`Git pull failed: ${(error as Error).message}`);
+    }
+}
+
 function findCloakedDirectory(): string | null {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders) { return null; }

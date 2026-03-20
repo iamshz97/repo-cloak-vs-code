@@ -101,6 +101,11 @@
         "command": "repo-cloak.syncSource",
         "title": "Repo Cloak: Sync Source",
         "icon": "$(sync)"
+      },
+      {
+        "command": "repo-cloak.pullSourceGit",
+        "title": "Repo Cloak: Pull from Git Changes",
+        "icon": "$(git-compare)"
       }
     ],
     "menus": {
