@@ -32,14 +32,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'pull':
                     vscode.commands.executeCommand('repo-cloak.pull');
                     break;
+                case 'pullAction':
+                    vscode.commands.executeCommand('repo-cloak.pullAction');
+                    break;
                 case 'pullSource':
                     vscode.commands.executeCommand('repo-cloak.pullSource', message.label);
                     break;
                 case 'push':
                     vscode.commands.executeCommand('repo-cloak.push');
                     break;
+                case 'pushAction':
+                    vscode.commands.executeCommand('repo-cloak.pushAction');
+                    break;
                 case 'pushAll':
                     vscode.commands.executeCommand('repo-cloak.pushAll');
+                    break;
+                case 'forcePullSource':
+                    vscode.commands.executeCommand('repo-cloak.forcePullSource', message.label);
+                    break;
+                case 'forcePushSource':
+                    vscode.commands.executeCommand('repo-cloak.forcePushSource', message.label);
                     break;
 
                 case 'addSource':
@@ -115,9 +127,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                             <button class="icon-btn" onclick="send('pullSourceGit','${label}')" title="Pull from Git changes">
                                 <span class="codicon codicon-git-compare"></span>
                             </button>
-
-                            <button class="icon-btn" onclick="send('pullSource','${label}')" title="Pull more files">
+                            <button class="icon-btn" onclick="send('pullSource','${label}')" title="Interactive Pull (add files)">
                                 <span class="codicon codicon-cloud-download"></span>
+                            </button>
+                            <button class="icon-btn" onclick="send('forcePullSource','${label}')" title="Force Pull (update files)">
+                                <span class="codicon codicon-repo-pull"></span>
+                            </button>
+                            <button class="icon-btn" onclick="send('forcePushSource','${label}')" title="Force Push (restore files)">
+                                <span class="codicon codicon-repo-push"></span>
                             </button>
                             <button class="icon-btn danger" onclick="send('removeSource','${label}')" title="Remove">
                                 <span class="codicon codicon-trash"></span>
@@ -335,13 +352,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
     <div class="action-bar">
-        <button class="action-btn" onclick="send('pull')">
+        <button class="action-btn" onclick="send('pullAction')">
             <span class="codicon codicon-cloud-download"></span> Pull
         </button>
-        <button class="action-btn" onclick="send('push')">
+        <button class="action-btn" onclick="send('pushAction')">
             <span class="codicon codicon-cloud-upload"></span> Push
         </button>
-
     </div>
 
     <div class="status-bar ${hasSession ? 'active' : ''}">

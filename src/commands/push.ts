@@ -325,6 +325,81 @@ export async function executePushAll(
 }
 
 /**
+ * Force Push a specific source (instantly restores to original path without prompts)
+ */
+export async function executeForcePushSource(
+    label: string,
+    sidebarProvider: SidebarProvider,
+    outputChannel: vscode.OutputChannel
+): Promise<void> {
+    try {
+        const cloakedDir = findCloakedDirectory();
+        if (!cloakedDir) {
+            vscode.window.showErrorMessage('No cloaked workspace found.');
+            return;
+        }
+
+        let mapping = loadMapping(cloakedDir);
+        if (mapping.encrypted && hasSecret()) {
+            try {
+                mapping = decryptMappingV2(mapping, getOrCreateSecret());
+            } catch {
+                vscode.window.showWarningMessage('Could not decrypt mapping for force push.');
+                return;
+            }
+        }
+
+        const source = getSourceByLabel(mapping, label);
+        if (!source || !source.path || !existsSync(source.path)) {
+            vscode.window.showErrorMessage(`Original path not found or inaccessible for "${label}".`);
+            return;
+        }
+
+        outputChannel.clear();
+        outputChannel.appendLine(`[Force Push] Restoring "${label}" to original path: ${source.path}...`);
+
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: `Force Pushing "${label}"...`, cancellable: false },
+            async (progress) => {
+                const validReplacements = (mapping.replacements as any[] || []).filter((r: any) => r.original);
+                const deanonymizer = createDeanonymizer(validReplacements);
+                const reversedReplacements = validReplacements.map((r: any) => ({
+                    original: r.replacement,
+                    replacement: r.original
+                }));
+
+                const sourceSubdir = join(cloakedDir, label);
+                const files = getAllFiles(sourceSubdir).filter(f => f.name !== 'AGENTS.md');
+
+                if (files.length === 0) {
+                    vscode.window.showWarningMessage(`No files found in "${label}" to restore.`);
+                    return;
+                }
+
+                const results = await copyFiles(
+                    files, sourceSubdir, source.path, deanonymizer,
+                    (current, total) => {
+                        progress.report({ increment: (1 / total) * 100, message: `${current}/${total}` });
+                    },
+                    reversedReplacements
+                );
+
+                outputChannel.appendLine(`[done] Restored ${results.copied} files`);
+                if (results.errors.length > 0) {
+                    outputChannel.appendLine(`  [warn] ${results.errors.length} errors`);
+                    results.errors.forEach(e => outputChannel.appendLine(`    - ${e.file}: ${e.error}`));
+                }
+            }
+        );
+
+        sidebarProvider.refresh();
+        vscode.window.showInformationMessage(`Force Pushed "${label}" successfully.`);
+    } catch (error) {
+        vscode.window.showErrorMessage(`Force Push failed: ${(error as Error).message}`);
+    }
+}
+
+/**
  * Find cloaked directory in workspace
  */
 function findCloakedDirectory(): string | null {
@@ -337,4 +412,26 @@ function findCloakedDirectory(): string | null {
         }
     }
     return null;
+}
+
+/**
+ * Top-level Push router (QuickPick for Interactive vs Force All)
+ */
+export async function executePushAction(
+    sidebarProvider: SidebarProvider,
+    outputChannel: vscode.OutputChannel
+): Promise<void> {
+    const pick = await vscode.window.showQuickPick(
+        [
+            { label: '$(file-directory) Interactive Push', description: 'Choose a specific source & destination', action: 'push' },
+            { label: '$(repo-push) Force Push All', description: 'Quietly restore all files to original paths', action: 'force' }
+        ],
+        { placeHolder: 'Choose a push action...' }
+    );
+
+    if (pick?.action === 'push') {
+        vscode.commands.executeCommand('repo-cloak.push');
+    } else if (pick?.action === 'force') {
+        vscode.commands.executeCommand('repo-cloak.forcePushAll');
+    }
 }
