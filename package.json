@@ -37,12 +37,14 @@
         {
           "type": "webview",
           "id": "repo-cloak.sidebar",
-          "name": "Dashboard"
+          "name": "Dashboard",
+          "icon": "$(dashboard)"
         },
         {
           "id": "repo-cloak.fileTree",
           "name": "File Selection",
-          "when": "repo-cloak.fileTreeVisible"
+          "when": "repo-cloak.fileTreeVisible",
+          "icon": "$(list-tree)"
         }
       ]
     },
@@ -106,19 +108,39 @@
         "command": "repo-cloak.pullSourceGit",
         "title": "Repo Cloak: Pull from Git Changes",
         "icon": "$(git-compare)"
+      },
+      {
+        "command": "repo-cloak.searchFileSelection",
+        "title": "Search",
+        "icon": "$(search)"
+      },
+      {
+        "command": "repo-cloak.clearFileSelectionSearch",
+        "title": "Clear Search",
+        "icon": "$(clear-all)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "repo-cloak.confirmFileSelection",
+          "command": "repo-cloak.searchFileSelection",
           "when": "view == repo-cloak.fileTree",
           "group": "navigation@1"
         },
         {
+          "command": "repo-cloak.clearFileSelectionSearch",
+          "when": "view == repo-cloak.fileTree && repo-cloak.fileTreeHasSearch",
+          "group": "navigation@2"
+        },
+        {
+          "command": "repo-cloak.confirmFileSelection",
+          "when": "view == repo-cloak.fileTree",
+          "group": "navigation@3"
+        },
+        {
           "command": "repo-cloak.cancelFileSelection",
           "when": "view == repo-cloak.fileTree",
-          "group": "navigation@2"
+          "group": "navigation@4"
         }
       ]
     }
