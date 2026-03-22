@@ -2,8 +2,13 @@
   "name": "repo-cloak",
   "displayName": "Repo Cloak",
   "description": "Selectively extract and anonymize files from repositories. Pull from multiple repos, anonymize sensitive data, push back — all from VS Code.",
-  "version": "0.1.0",
-  "publisher": "iamshz97",
+  "version": "0.2.0",
+  "icon": "images/icon.ico",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iamshz97/repo-cloak-vs-code"
+  },
+  "publisher": "ShazniShiraz",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
