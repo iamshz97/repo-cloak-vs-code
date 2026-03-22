@@ -1,42 +1,63 @@
 <div align="center">
-  <h1>🎭 Repo Cloak (VS Code)</h1>
-  <p><b>Selectively extract, anonymize, and collaborate on enterprise codebases securely with AI.</b></p>
+  <h1>Repo Cloak</h1>
+  <p><i>Enterprise-Grade Code Anonymization & Extraction for VS Code</i></p>
 </div>
 
 ---
 
-**Repo Cloak** is a VS Code extension that allows you to safely provide your proprietary codebase to AI coding assistants (like Copilot, Cursor, or ChatGPT) by taking only what you need, scrubbing sensitive data, and creating a unified "cloaked" workspace. When the AI is done generating or modifying the code, you can easily "push" the changes back to your original repositories.
+**Repo Cloak** is a sophisticated VS Code extension engineered to safely bridge the gap between proprietary enterprise codebases and AI coding assistants. By selectively extracting, anonymizing, and creating a unified "cloaked" workspace, Repo Cloak allows you to leverage powerful AI tools (like Copilot, Cursor, or ChatGPT) while maintaining strict data privacy and security.
 
-## 🌟 Key Features
+## Architecture & Workflow
 
-- **Multi-Source Extraction**: Pull files from multiple different repositories (e.g., frontend, backend, shared libraries) into a single unified cloaked workspace.
-- **Security First**: Built-in secret scanning (over 20+ patterns) warns you inside the Output panel if you try to extract passwords, AWS keys, or tokens, allowing you to filter them out instantly.
-- **Intelligent Keyword Anonymization**: Automatically replace sensitive company names, client names, or product codenames (e.g., `AcmeCorp` → `ClientA`) while strictly preserving `camelCase`, `PascalCase`, and `kebab-case`. Reverses seamlessly on Push.
-- **Git Integration**: Don't want to hunt manually for files? Use **Pull from Git Changes** to automatically extract uncommitted files or files touched in recent commits.
-- **Quiet Macros ("Force" Actions)**: Use the **Force Pull** and **Force Push** actions to silently sync your mapped files between the source repositories and the cloak without any interactive prompts.
-- **`AGENTS.md` Context Generation**: Automatically generates system prompt context inside the cloaked workspace to instruct LLMs on how to interact with your codebase.
+```text
+  ┌──────────────────────┐                     ┌──────────────────────┐
+  │                      │   [1] Extract &     │                      │
+  │  Enterprise          ├────────────────────►│  Cloaked             │
+  │  Repositories        │   Anonymize         │  Workspace           │
+  │  (Source Code)       │                     │  (Safe for AI)       │
+  │                      │◄────────────────────┤                      │
+  └───────┬──────────────┘   [3] Restore &     └──────────┬───────────┘
+          │                  De-anonymize                 │
+          │                                               │
+          │                                               │ [2] AI
+          │ [0] Configure                                 │ Collaboration
+          │ Mappings &                                    │
+          │ Replacements                                  ▼
+  ┌───────▼──────────────┐                     ┌──────────────────────┐
+  │                      │                     │                      │
+  │  Repo Cloak Engine   │                     │  AI Assistants       │
+  │  (AES-256 Encrypted) │                     │  (Copilot / Cursor)  │
+  │                      │                     │                      │
+  └──────────────────────┘                     └──────────────────────┘
+```
 
-## 🚀 How it Works (The Workflow)
+The diagram illustrates the core lifecycle:
+1. **Extraction**: Code is selectively pulled from one or more source repositories. Sensitive terminology and secrets are intercepted and anonymized.
+2. **Collaboration**: You and your AI assistant work freely within the secure, cloaked workspace, shielded from proprietary specifics.
+3. **Restoration**: Once the work is complete, Repo Cloak seamlessly translates the anonymized code back to its original state and pushes it to the source repositories.
 
-1.  **Open an Empty Folder:** Open a blank folder in VS Code to act as your "cloak".
-2.  **Pull Files:** Click **Pull** in the Repo Cloak sidebar. Select a source repository, check the files you want to extract using the native Tree View, and enter any keywords to anonymize.
-3.  **Collaborate with AI:** Work with your AI pair programmer inside the cloaked workspace.
-4.  **Push Files:** When the AI has successfully modified your code, click **Push** to seamlessly restore the anonymized files back to their original source repositories.
+## Key Capabilities
 
-## 🖱️ User Interface
+- **Multi-Source Aggregation**: Seamlessly pull components from disparate repositories (e.g., frontend, backend, microservices) into a single, cohesive cloaked environment.
+- **Intelligent Anonymization**: Automatically redact and replace sensitive nomenclature (e.g., transforming `AcmeCorp` to `ClientA`). The engine natively respects and preserves casing variants (`camelCase`, `PascalCase`, `kebab-case`) and flawlessly reverses them upon restoration.
+- **Proactive Security Scanning**: Built-in secret detection (evaluating 20+ patterns) intercepts attempts to extract sensitive credentials (AWS keys, tokens, passwords), alerting you instantly.
+- **Git-Aware Extraction**: Bypass manual file selection by utilizing **Pull from Git Changes**, which intelligently targets uncommitted files or those modified in recent commits.
+- **Frictionless Synchronization**: Execute silent, automated syncs between your source repositories and the cloak using the **Force Pull** and **Force Push** macros.
+- **Context Generation**: Automatically compile essential system prompts (`AGENTS.md`) within the cloaked workspace, providing AI assistants with the precise context needed to navigate your architecture.
 
-The extension adds a sleek **Dashboard** to your VS Code Activity Bar (shield icon `$(shield)`).
+## Getting Started
 
-From the Dashboard, you have:
+1. **Initialize**: Open a pristine, empty folder in VS Code to serve as your "cloak".
+2. **Extract**: Access the Repo Cloak Dashboard via the Activity Bar (shield icon `$(shield)`). Select a source repository, utilize the native Tree View to pinpoint required files, and configure any necessary keyword anonymizations.
+3. **Collaborate**: Engage your preferred AI assistant within the secure confines of the cloaked workspace.
+4. **Restore**: Upon completion, execute a **Push** to seamlessly reintegrate the modified, de-anonymized files back into their native repositories.
 
-- **Top Action Bar**: QuickPick routers for `Pull` (Interactive or Force Pull All) and `Push` (Interactive or Force Push All).
-- **Sources List**: View all your cloaked repositories, file counts, and replacements. Hover over any source to access granular, per-source actions (Git Pull, Pull, Force Pull, Force Push, Remove).
+## Uncompromising Security
 
-## 🔒 Encryption & Privacy
-
-Repo Cloak never sends your code anywhere. Everything runs locally natively inside your VS Code instance. Mappings (`.repo-cloak-map.json`) containing original file paths and keywords are heavily encrypted using `AES-256-GCM` before being saved to disk.
+Privacy is foundational to Repo Cloak. Your code never leaves your local environment or organization boundaries. All operations run natively within your VS Code instance. Crucially, mapping configurations (`.repo-cloak-map.json`)—which contain the blueprint of your original file paths and semantic replacements—are heavily encrypted via `AES-256-GCM` before persisting to disk.
 
 ---
 
-**License**: MIT
-**Author**: Shazni Shiraz
+<div align="center">
+  <p><b>License:</b> MIT &nbsp;&nbsp;•&nbsp;&nbsp; <b>Author:</b> Shazni Shiraz</p>
+</div>
