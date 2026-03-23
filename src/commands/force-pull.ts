@@ -107,11 +107,12 @@ export async function executeForcePullAll(
             }
         );
 
-        sidebarProvider.refresh();
         vscode.window.showInformationMessage(`Force Pull complete for all sources.`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Force Pull failed: ${(error as Error).message}`);
+    } finally {
+        sidebarProvider.refresh();
     }
 }
 
@@ -164,7 +165,7 @@ export async function executeForcePullSource(
         outputChannel.appendLine(`[Force Pull Source] Updating mapped files for "${label}"...`);
 
         await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: `Updating "${label}"...` },
+            { location: vscode.ProgressLocation.Window, title: `$(shield) $(cloud-download) Force Pulling "${label}"...` },
             async (progress) => {
                 const results = await copyFiles(
                     validFiles, sourceDir, destSubdir, anonymizer,
@@ -185,10 +186,11 @@ export async function executeForcePullSource(
             }
         );
 
-        sidebarProvider.refresh();
         vscode.window.showInformationMessage(`Updated ${validFiles.length} files for "${label}"`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Force Pull failed: ${(error as Error).message}`);
+    } finally {
+        sidebarProvider.refresh();
     }
 }

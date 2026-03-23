@@ -71,22 +71,31 @@ function matchCase(original: string, replacement: string): string {
         return replacement;
     }
 
+    // 1. ALL UPPERCASE
     if (original === original.toUpperCase()) {
         return replacement.toUpperCase();
     }
 
+    // 2. all lowercase
     if (original === original.toLowerCase()) {
         return replacement.toLowerCase();
     }
 
-    const firstLetter = original.charAt(0);
-    const restOfStr = original.slice(1);
+    const firstUpper = original.charAt(0) === original.charAt(0).toUpperCase();
+    const restLower = original.length > 1 && original.slice(1) === original.slice(1).toLowerCase();
 
-    if (firstLetter === firstLetter.toUpperCase() && restOfStr === restOfStr.toLowerCase()) {
+    // 3. Titlecase (First upper, all rest lower)
+    if (firstUpper && restLower) {
         return replacement.charAt(0).toUpperCase() + replacement.slice(1).toLowerCase();
     }
 
-    return replacement;
+    // 4. camelCase (First lower, contains uppercase later)
+    if (!firstUpper) {
+        return replacement.charAt(0).toLowerCase() + replacement.slice(1);
+    }
+
+    // 5. PascalCase / MixedCase (First upper, contains uppercase later)
+    return replacement.charAt(0).toUpperCase() + replacement.slice(1);
 }
 
 /**

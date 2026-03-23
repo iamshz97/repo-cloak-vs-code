@@ -9,7 +9,7 @@ import { resolve, relative, join, basename } from 'path';
 import { existsSync, writeFileSync } from 'fs';
 import { FileTreeProvider } from '../views/file-tree-provider';
 import { SidebarProvider } from '../views/sidebar-provider';
-import { createAnonymizer, Replacement } from '../core/anonymizer';
+import { createAnonymizer, Replacement, anonymizePath } from '../core/anonymizer';
 import { copyFiles } from '../core/copier';
 import { scanFilesForSecrets } from '../core/secrets';
 import { getAgentsMarkdown } from '../core/agents-template';
@@ -157,7 +157,7 @@ export async function executePull(
 
             if ((gitMode as any).value === 'uncommitted') {
                 const gitFiles = await vscode.window.withProgress(
-                    { location: vscode.ProgressLocation.Notification, title: 'Scanning uncommitted files...' },
+                    { location: vscode.ProgressLocation.Window, title: '$(shield) $(search) Scanning uncommitted files...' },
                     () => getChangedFiles(sourceDir)
                 );
                 if (gitFiles.length === 0) {
@@ -178,7 +178,7 @@ export async function executePull(
                 );
                 if (!selected || selected.length === 0) { return; }
                 const commitFiles = await vscode.window.withProgress(
-                    { location: vscode.ProgressLocation.Notification, title: 'Fetching files from commits...' },
+                    { location: vscode.ProgressLocation.Window, title: '$(shield) $(git-commit) Fetching files from commits...' },
                     () => getFilesChangedInCommits(sourceDir, selected.map(s => (s as any).value))
                 );
                 precheck = commitFiles.map(f => resolve(sourceDir, f)).filter(f => existsSync(f));
@@ -190,7 +190,7 @@ export async function executePull(
                 });
                 if (!commitHash) { return; }
                 const commitFiles = await vscode.window.withProgress(
-                    { location: vscode.ProgressLocation.Notification, title: `Fetching files from ${commitHash}...` },
+                    { location: vscode.ProgressLocation.Window, title: `$(shield) $(git-commit) Fetching files from ${commitHash}...` },
                     () => getFilesChangedInCommits(sourceDir, [commitHash.trim()])
                 );
                 if (commitFiles.length === 0) {
@@ -218,7 +218,7 @@ export async function executePull(
 
         // ── Step 5: Secret scan ─────────────────────────────────────────────
         const secretFindings = await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'Scanning for sensitive data...' },
+            { location: vscode.ProgressLocation.Window, title: '$(shield) $(search) Scanning for sensitive data...' },
             () => scanFilesForSecrets(selectedFiles)
         );
 
@@ -293,8 +293,8 @@ export async function executePull(
         // ── Step 8: Copy and anonymize ──────────────────────────────────────
         await vscode.window.withProgress(
             {
-                location: vscode.ProgressLocation.Notification,
-                title: 'Extracting and anonymizing...',
+                location: vscode.ProgressLocation.Window,
+                title: '$(shield) $(cloud-download) Extracting...',
                 cancellable: false
             },
             async (progress) => {
@@ -311,7 +311,7 @@ export async function executePull(
                     (current, total, file) => {
                         progress.report({
                             increment: (1 / total) * 100,
-                            message: `${current}/${total} — ${file}`
+                            message: `${current}/${total} files`
                         });
                     },
                     replacements
@@ -334,12 +334,8 @@ export async function executePull(
         // ── Step 9: Save mapping ────────────────────────────────────────────
         const newFiles = selectedFiles.map(f => {
             const originalPath = relative(sourceDir, f);
-            let anonymizedPath = join(sourceLabel, originalPath);
-            for (const { original, replacement } of replacements) {
-                const regex = new RegExp(original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-                anonymizedPath = anonymizedPath.replace(regex, replacement);
-            }
-            return { original: relative(sourceDir, f), cloaked: anonymizedPath };
+            const anonymizedPath = anonymizePath(originalPath, replacements);
+            return { original: originalPath, cloaked: join(sourceLabel, anonymizedPath) };
         });
 
         let mapping: MappingV2;
@@ -469,7 +465,7 @@ export async function executePullSource(
 
         // Secret scan
         const secretFindings = await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'Scanning for sensitive data...' },
+            { location: vscode.ProgressLocation.Window, title: '$(shield) $(search) Scanning for sensitive data...' },
             () => scanFilesForSecrets(selectedFiles)
         );
 
@@ -500,12 +496,12 @@ export async function executePullSource(
         const destBase = join(cloakedDir, label);
 
         await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: `Adding files to "${label}"...` },
+            { location: vscode.ProgressLocation.Window, title: `$(shield) $(cloud-download) Pulling "${label}"...` },
             async (progress) => {
                 await copyFiles(
                     selectedFiles, sourceDir, destBase, anonymizer,
                     (current, total, file) => {
-                        progress.report({ increment: (1 / total) * 100, message: `${current}/${total}` });
+                        progress.report({ increment: (1 / total) * 100, message: `${current}/${total} files` });
                     },
                     replacements
                 );
@@ -515,22 +511,19 @@ export async function executePullSource(
         // Update mapping
         const newFiles = selectedFiles.map(f => {
             const originalPath = relative(sourceDir, f);
-            let anonymizedPath = join(label, originalPath);
-            for (const { original, replacement } of replacements) {
-                const regex = new RegExp(original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-                anonymizedPath = anonymizedPath.replace(regex, replacement);
-            }
-            return { original: relative(sourceDir, f), cloaked: anonymizedPath };
+            const anonymizedPath = anonymizePath(originalPath, replacements);
+            return { original: originalPath, cloaked: join(label, anonymizedPath) };
         });
 
         const updatedMapping = mergeFilesIntoSource(rawMapping, label, newFiles);
         saveMapping(cloakedDir, updatedMapping);
 
-        sidebarProvider.refresh();
         vscode.window.showInformationMessage(`Added ${selectedFiles.length} files to "${label}"`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Pull failed: ${(error as Error).message}`);
+    } finally {
+        sidebarProvider.refresh();
     }
 }
 
@@ -598,7 +591,7 @@ export async function executePullSourceGit(
 
         if ((gitMode as any).value === 'uncommitted') {
             gitFiles = await vscode.window.withProgress(
-                { location: vscode.ProgressLocation.Notification, title: 'Scanning uncommitted files...' },
+                { location: vscode.ProgressLocation.Window, title: '$(shield) $(search) Scanning uncommitted files...' },
                 () => getChangedFiles(sourceDir)
             );
         } else if ((gitMode as any).value === 'commits') {
@@ -613,7 +606,7 @@ export async function executePullSourceGit(
             );
             if (!selected || selected.length === 0) { return; }
             gitFiles = await vscode.window.withProgress(
-                { location: vscode.ProgressLocation.Notification, title: 'Fetching files from commits...' },
+                { location: vscode.ProgressLocation.Window, title: '$(shield) $(git-commit) Fetching files from commits...' },
                 () => getFilesChangedInCommits(sourceDir, selected.map(s => (s as any).value))
             );
         } else if ((gitMode as any).value === 'commit_id') {
@@ -623,7 +616,7 @@ export async function executePullSourceGit(
             });
             if (!commitHash) { return; }
             gitFiles = await vscode.window.withProgress(
-                { location: vscode.ProgressLocation.Notification, title: `Fetching files from ${commitHash}...` },
+                { location: vscode.ProgressLocation.Window, title: `$(shield) $(git-commit) Fetching files from ${commitHash}...` },
                 () => getFilesChangedInCommits(sourceDir, [commitHash.trim()])
             );
         }
@@ -654,7 +647,7 @@ export async function executePullSourceGit(
 
         // Secret scan
         const secretFindings = await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'Scanning for sensitive data...' },
+            { location: vscode.ProgressLocation.Window, title: '$(shield) $(search) Scanning for sensitive data...' },
             () => scanFilesForSecrets(selectedFiles)
         );
 
@@ -685,12 +678,12 @@ export async function executePullSourceGit(
         const destBase = join(cloakedDir, label);
 
         await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: `Adding Git changes to "${label}"...` },
+            { location: vscode.ProgressLocation.Window, title: `$(shield) $(cloud-download) Pulling "${label}"...` },
             async (progress) => {
                 await copyFiles(
                     selectedFiles, sourceDir, destBase, anonymizer,
                     (current, total) => {
-                        progress.report({ increment: (1 / total) * 100, message: `${current}/${total}` });
+                        progress.report({ increment: (1 / total) * 100, message: `${current}/${total} files` });
                     },
                     replacements
                 );
@@ -700,21 +693,18 @@ export async function executePullSourceGit(
         // Update mapping
         const newFiles = selectedFiles.map(f => {
             const originalPath = relative(sourceDir, f);
-            let anonymizedPath = join(label, originalPath);
-            for (const { original, replacement } of replacements) {
-                const regex = new RegExp(original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-                anonymizedPath = anonymizedPath.replace(regex, replacement);
-            }
-            return { original: relative(sourceDir, f), cloaked: anonymizedPath };
+            const anonymizedPath = anonymizePath(originalPath, replacements);
+            return { original: originalPath, cloaked: join(label, anonymizedPath) };
         });
         const updatedMapping = mergeFilesIntoSource(rawMapping, label, newFiles);
         saveMapping(cloakedDir, updatedMapping);
 
-        sidebarProvider.refresh();
         vscode.window.showInformationMessage(`Added ${selectedFiles.length} Git-changed files to "${label}"`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Git pull failed: ${(error as Error).message}`);
+    } finally {
+        sidebarProvider.refresh();
     }
 }
 

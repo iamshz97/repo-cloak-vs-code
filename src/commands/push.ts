@@ -162,8 +162,8 @@ export async function executePush(
         // ── Step 8: Copy and de-anonymize ───────────────────────────────────
         await vscode.window.withProgress(
             {
-                location: vscode.ProgressLocation.Notification,
-                title: `Restoring "${targetLabel}"...`,
+                location: vscode.ProgressLocation.Window,
+                title: `$(shield) $(cloud-upload) Pushing "${targetLabel}"...`,
                 cancellable: false
             },
             async (progress) => {
@@ -192,7 +192,7 @@ export async function executePush(
                     (current, total, file) => {
                         progress.report({
                             increment: (1 / total) * 100,
-                            message: `${current}/${total} — ${file}`
+                            message: `${current}/${total} files`
                         });
                     },
                     reversedReplacements
@@ -268,8 +268,8 @@ export async function executePushAll(
         // Push each source
         await vscode.window.withProgress(
             {
-                location: vscode.ProgressLocation.Notification,
-                title: 'Restoring all sources...',
+                location: vscode.ProgressLocation.Window,
+                title: '$(shield) $(cloud-upload) Pushing all...',
                 cancellable: false
             },
             async (progress) => {
@@ -295,7 +295,7 @@ export async function executePushAll(
                     const files = getAllFiles(sourceSubdir).filter(f => f.name !== 'AGENTS.md');
 
                     progress.report({
-                        message: `${label} (${i + 1}/${sourceLabels.length})`,
+                        message: `${label} (${i + 1}/${sourceLabels.length} sources)`,
                         increment: (1 / sourceLabels.length) * 100
                     });
 
@@ -359,7 +359,7 @@ export async function executeForcePushSource(
         outputChannel.appendLine(`[Force Push] Restoring "${label}" to original path: ${source.path}...`);
 
         await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: `Force Pushing "${label}"...`, cancellable: false },
+            { location: vscode.ProgressLocation.Window, title: `$(shield) $(cloud-upload) Force Pushing "${label}"...`, cancellable: false },
             async (progress) => {
                 const validReplacements = (mapping.replacements as any[] || []).filter((r: any) => r.original);
                 const deanonymizer = createDeanonymizer(validReplacements);
@@ -379,7 +379,7 @@ export async function executeForcePushSource(
                 const results = await copyFiles(
                     files, sourceSubdir, source.path, deanonymizer,
                     (current, total) => {
-                        progress.report({ increment: (1 / total) * 100, message: `${current}/${total}` });
+                        progress.report({ increment: (1 / total) * 100, message: `${current}/${total} files` });
                     },
                     reversedReplacements
                 );
@@ -392,10 +392,11 @@ export async function executeForcePushSource(
             }
         );
 
-        sidebarProvider.refresh();
         vscode.window.showInformationMessage(`Force Pushed "${label}" successfully.`);
     } catch (error) {
         vscode.window.showErrorMessage(`Force Push failed: ${(error as Error).message}`);
+    } finally {
+        sidebarProvider.refresh();
     }
 }
 

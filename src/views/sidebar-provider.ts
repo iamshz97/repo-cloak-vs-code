@@ -60,6 +60,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'addReplacement':
                     vscode.commands.executeCommand('repo-cloak.addReplacement');
                     break;
+                case 'removeReplacement':
+                    vscode.commands.executeCommand('repo-cloak.removeReplacement', message.label);
+                    break;
                 case 'removeSource':
                     vscode.commands.executeCommand('repo-cloak.removeSource', message.label);
                     break;
@@ -124,19 +127,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                             <span class="list-item-desc">${fileCount} files</span>
                         </div>
                         <div class="list-item-actions">
-                            <button class="icon-btn" onclick="send('pullSourceGit','${label}')" title="Pull from Git changes">
+                            <button class="icon-btn" onclick="send('pullSourceGit','${label}', this)" title="Pull from Git changes">
                                 <span class="codicon codicon-git-compare"></span>
                             </button>
-                            <button class="icon-btn" onclick="send('pullSource','${label}')" title="Interactive Pull (add files)">
+                            <button class="icon-btn" onclick="send('pullSource','${label}', this)" title="Interactive Pull (add files)">
                                 <span class="codicon codicon-cloud-download"></span>
                             </button>
-                            <button class="icon-btn" onclick="send('forcePullSource','${label}')" title="Force Pull (update files)">
+                            <button class="icon-btn" onclick="send('forcePullSource','${label}', this)" title="Force Pull (update files)">
                                 <span class="codicon codicon-repo-pull"></span>
                             </button>
-                            <button class="icon-btn" onclick="send('forcePushSource','${label}')" title="Force Push (restore files)">
+                            <button class="icon-btn" onclick="send('forcePushSource','${label}', this)" title="Force Push (restore files)">
                                 <span class="codicon codicon-repo-push"></span>
                             </button>
-                            <button class="icon-btn danger" onclick="send('removeSource','${label}')" title="Remove">
+                            <button class="icon-btn danger" onclick="send('removeSource','${label}', this)" title="Remove">
                                 <span class="codicon codicon-trash"></span>
                             </button>
                         </div>
@@ -147,11 +150,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const replacementsHtml = m && m.replacements && m.replacements.length > 0
             ? (m.replacements as any[]).map(r => {
                 const orig = r.encrypted ? 'encrypted' : escapeHtml(r.original || '');
+                const rawOrig = r.original ? r.original.replace(/'/g, "\\'") : '';
                 return `
                     <div class="list-item replacement">
-                        <code class="from">${orig}</code>
-                        <span class="arrow">&rarr;</span>
-                        <code class="to">${escapeHtml(r.replacement)}</code>
+                        <div class="list-item-content">
+                            <code class="from">${orig}</code>
+                            <span class="arrow">&rarr;</span>
+                            <code class="to">${escapeHtml(r.replacement)}</code>
+                        </div>
+                        <div class="list-item-actions">
+                            ${r.encrypted ? '' : `<button class="icon-btn danger" onclick="send('removeReplacement','${rawOrig}', this)" title="Remove">
+                                <span class="codicon codicon-trash"></span>
+                            </button>`}
+                        </div>
                     </div>`;
             }).join('')
             : '<p class="empty">No replacements</p>';
@@ -159,13 +170,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const hasSession = !!m;
         const totalSources = m?.stats?.totalSources || m?.sources?.length || 0;
         const totalFiles = m?.stats?.totalFiles || 0;
-        const totalReplacements = m?.stats?.replacementsCount || m?.replacements?.length || 0;
+        const totalTotalReplacements = m?.stats?.replacementsCount || m?.replacements?.length || 0;
+        const nonce = new Date().getTime().toString() + Math.random().toString();
 
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="nonce" content="${nonce}">
 <style>
     :root {
         --section-spacing: 14px;
@@ -340,6 +353,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     .codicon { font-size: 14px; }
 
+    @keyframes spin {
+        100% { transform: rotate(360deg); }
+    }
+    .spinning { animation: spin 1s linear infinite; }
+
     /* ── Empty ─── */
     .empty {
         font-size: 11px;
@@ -369,7 +387,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <div class="stats">
         <span class="stat"><strong>${totalSources}</strong> sources</span>
         <span class="stat"><strong>${totalFiles}</strong> files</span>
-        <span class="stat"><strong>${totalReplacements}</strong> replacements</span>
+        <span class="stat"><strong>${totalTotalReplacements}</strong> replacements</span>
     </div>
     ` : ''}
 
@@ -399,7 +417,24 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     <script>
         const vscode = acquireVsCodeApi();
-        function send(cmd, label) {
+        function send(cmd, label, btn) {
+            if (btn) {
+                const icon = btn.querySelector('.codicon');
+                if (icon) {
+                    icon.className = 'codicon codicon-sync spinning';
+                }
+                const actionsContainer = btn.closest('.list-item-actions');
+                if (actionsContainer) {
+                    const allButtons = actionsContainer.querySelectorAll('button');
+                    allButtons.forEach(b => {
+                        b.disabled = true;
+                        b.style.pointerEvents = 'none';
+                        if (b !== btn) {
+                            b.style.opacity = '0.3';
+                        }
+                    });
+                }
+            }
             vscode.postMessage({ command: cmd, label: label || undefined });
         }
     </script>

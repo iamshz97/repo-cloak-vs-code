@@ -198,7 +198,17 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
                 if (shouldIgnore(entry.name)) { continue; }
                 const fullPath = join(dirPath, entry.name);
 
-                if (this._allowedPaths && !this._allowedPaths.has(fullPath)) { continue; }
+                if (this._allowedPaths) {
+                    if (!this._allowedPaths.has(fullPath) && !this._isPathAncestorOfAllowed(fullPath)) {
+                        continue;
+                    }
+                }
+
+                if (this._searchedPaths) {
+                    if (!this._searchedPaths.has(fullPath) && !this._isPathAncestorOfSearched(fullPath)) {
+                        continue;
+                    }
+                }
 
                 if (checked) {
                     this._checkedPaths.add(fullPath);

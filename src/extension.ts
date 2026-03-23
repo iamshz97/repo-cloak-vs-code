@@ -10,10 +10,10 @@ import { executePull, executePullSource, executePullSourceGit, executePullAction
 import { executePush, executePushAll, executePushAction, executeForcePushSource } from './commands/push';
 import { executeForcePullAll, executeForcePullSource } from './commands/force-pull';
 import {
-    hasMapping, loadRawMapping,
+    hasMapping, loadRawMapping, decryptMappingV2,
     removeSourceFromMapping, saveMapping, getSourceLabels
 } from './core/mapper';
-import { getOrCreateSecret, encryptReplacements } from './core/crypto';
+import { getOrCreateSecret, encryptReplacements, hasSecret } from './core/crypto';
 
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Repo Cloak');
@@ -117,6 +117,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.removeSource', async (label?: string) => {
+            try {
             const cloakedDir = findCloakedDirectory();
             if (!cloakedDir) {
                 vscode.window.showErrorMessage('No cloaked workspace found.');
@@ -146,14 +147,15 @@ export function activate(context: vscode.ExtensionContext) {
 
             mapping = removeSourceFromMapping(mapping, label);
             saveMapping(cloakedDir, mapping);
-            sidebarProvider.refresh();
             vscode.window.showInformationMessage(`Removed source "${label}"`);
+            } finally { sidebarProvider.refresh(); }
         })
     );
 
     // ─── Replacements ───────────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.addReplacement', async () => {
+            try {
             const cloakedDir = findCloakedDirectory();
             if (!cloakedDir) {
                 vscode.window.showErrorMessage('No cloaked workspace found. Pull files first.');
@@ -189,8 +191,82 @@ export function activate(context: vscode.ExtensionContext) {
             };
 
             saveMapping(cloakedDir, mapping);
-            sidebarProvider.refresh();
             vscode.window.showInformationMessage(`Added replacement: "${original}" \u2192 "${replacement}"`);
+            } finally { sidebarProvider.refresh(); }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.removeReplacement', async (original?: string) => {
+            try {
+            const cloakedDir = findCloakedDirectory();
+            if (!cloakedDir) {
+                vscode.window.showErrorMessage('No cloaked workspace found.');
+                return;
+            }
+
+            let mapping = loadRawMapping(cloakedDir);
+            if (!mapping || !mapping.replacements || mapping.replacements.length === 0) { return; }
+
+            let removedCount = 0;
+
+            if (mapping.encrypted && hasSecret()) {
+                const secret = getOrCreateSecret();
+                const decrypted = decryptMappingV2(mapping, secret);
+                
+                if (!original) {
+                    const pick = await vscode.window.showQuickPick(
+                        (decrypted.replacements as any[]).map(r => ({ label: r.original, description: `→ ${r.replacement}` })),
+                        { title: 'Which replacement do you want to remove?' }
+                    );
+                    if (!pick) { return; }
+                    original = pick.label;
+                }
+
+                const confirm = await vscode.window.showWarningMessage(
+                    `Remove replacement for "${original}"?`,
+                    { modal: true },
+                    'Remove'
+                );
+                if (confirm !== 'Remove') { return; }
+
+                const remainingDecrypted = (decrypted.replacements as any[]).filter(r => r.original !== original);
+                mapping.replacements = encryptReplacements(remainingDecrypted, secret);
+                removedCount = (decrypted.replacements.length - remainingDecrypted.length);
+            } else if (!mapping.encrypted) {
+                if (!original) {
+                    const pick = await vscode.window.showQuickPick(
+                        (mapping.replacements as any[]).map(r => ({ label: r.original, description: `→ ${r.replacement}` })),
+                        { title: 'Which replacement do you want to remove?' }
+                    );
+                    if (!pick) { return; }
+                    original = pick.label;
+                }
+
+                const confirm = await vscode.window.showWarningMessage(
+                    `Remove replacement for "${original}"?`,
+                    { modal: true },
+                    'Remove'
+                );
+                if (confirm !== 'Remove') { return; }
+
+                const initialLength = mapping.replacements.length;
+                mapping.replacements = (mapping.replacements as any[]).filter(r => r.original !== original);
+                removedCount = initialLength - mapping.replacements.length;
+            } else {
+                vscode.window.showErrorMessage('Cannot remove replacement because mapping is encrypted and secret is missing.');
+                return;
+            }
+
+            if (removedCount > 0) {
+                mapping.stats = {
+                    ...mapping.stats,
+                    replacementsCount: mapping.replacements.length
+                };
+                saveMapping(cloakedDir, mapping);
+                vscode.window.showInformationMessage(`Removed replacement for "${original}"`);
+            }
+            } finally { sidebarProvider.refresh(); }
         })
     );
 

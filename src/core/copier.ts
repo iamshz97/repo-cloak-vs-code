@@ -6,40 +6,7 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join, relative } from 'path';
 import { isBinaryFile } from './scanner';
-import { Replacement } from './anonymizer';
-
-/**
- * Apply replacements to a path (file/folder names)
- */
-function anonymizePath(relativePath: string, replacements: Replacement[]): string {
-    if (!replacements || replacements.length === 0) {
-        return relativePath;
-    }
-
-    let result = relativePath;
-    for (const { original, replacement } of replacements) {
-        const regex = new RegExp(escapeRegex(original), 'gi');
-        result = result.replace(regex, (match) => matchCase(match, replacement));
-    }
-    return result;
-}
-
-function escapeRegex(string: string): string {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function matchCase(original: string, replacement: string): string {
-    if (original === original.toUpperCase()) {
-        return replacement.toUpperCase();
-    }
-    if (original === original.toLowerCase()) {
-        return replacement.toLowerCase();
-    }
-    if (original[0] === original[0].toUpperCase()) {
-        return replacement.charAt(0).toUpperCase() + replacement.slice(1);
-    }
-    return replacement;
-}
+import { Replacement, anonymizePath } from './anonymizer';
 
 /**
  * Copy a single file, creating directories as needed
