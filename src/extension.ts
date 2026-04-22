@@ -9,6 +9,8 @@ import { FileTreeProvider } from './views/file-tree-provider';
 import { executePull, executePullSource, executePullSourceGit, executePullAction } from './commands/pull';
 import { executePush, executePushAll, executePushAction, executeForcePushSource } from './commands/push';
 import { executeForcePullAll, executeForcePullSource } from './commands/force-pull';
+import { executeCopyForAI } from './commands/copy-for-ai';
+import { executeResolveOrphans } from './commands/orphans';
 import {
     hasMapping, loadRawMapping, decryptMappingV2,
     removeSourceFromMapping, saveMapping, getSourceLabels
@@ -298,6 +300,20 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.clearFileSelectionSearch', () => {
             fileTreeProvider.setSearchFilter('');
+        })
+    );
+
+    // ─── Copy for AI ────────────────────────────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.copyForAI', (label?: string) => {
+            executeCopyForAI(label, fileTreeProvider, sidebarProvider, outputChannel);
+        })
+    );
+
+    // ─── Resolve orphaned files ─────────────────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.resolveOrphans', (label?: string) => {
+            executeResolveOrphans(label, sidebarProvider, outputChannel);
         })
     );
 

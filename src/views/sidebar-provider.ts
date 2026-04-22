@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { hasMapping, loadRawMapping, decryptMappingV2, MappingV2 } from '../core/mapper';
+import { hasMapping, loadRawMapping, decryptMappingV2, MappingV2, getStaleFiles } from '../core/mapper';
 import { hasSecret, getOrCreateSecret } from '../core/crypto';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
@@ -69,6 +69,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'pullSourceGit':
                     vscode.commands.executeCommand('repo-cloak.pullSourceGit', message.label);
                     break;
+                case 'copyForAI':
+                    vscode.commands.executeCommand('repo-cloak.copyForAI', message.label);
+                    break;
+                case 'resolveOrphans':
+                    vscode.commands.executeCommand('repo-cloak.resolveOrphans', message.label);
+                    break;
             }
         });
 
@@ -119,14 +125,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             ? m.sources.map(s => {
                 const fileCount = s.files?.length || 0;
                 const label = escapeHtml(s.label);
+                const orphanCount = m ? getStaleFiles(m, s.label).length : 0;
+                const orphanBadge = orphanCount > 0
+                    ? `<span class="orphan-badge" title="${orphanCount} file(s) no longer in source" onclick="send('resolveOrphans','${label}', this)">⚠ ${orphanCount}</span>`
+                    : '';
                 return `
                     <div class="list-item">
                         <div class="list-item-content">
                             <span class="codicon codicon-package"></span>
                             <span class="list-item-label">${label}</span>
                             <span class="list-item-desc">${fileCount} files</span>
+                            ${orphanBadge}
                         </div>
                         <div class="list-item-actions">
+                            <button class="icon-btn ai-btn" onclick="send('copyForAI','${label}', this)" title="Copy for AI (clipboard)">
+                                <span class="codicon codicon-sparkle"></span>
+                            </button>
                             <button class="icon-btn" onclick="send('pullSourceGit','${label}', this)" title="Pull from Git changes">
                                 <span class="codicon codicon-git-compare"></span>
                             </button>
@@ -350,6 +364,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
     .icon-btn.danger:hover { color: var(--vscode-errorForeground); }
+    .icon-btn.ai-btn { color: var(--vscode-charts-purple, #c586c0); }
+    .icon-btn.ai-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+    .orphan-badge {
+        font-size: 10px;
+        padding: 1px 6px;
+        margin-left: 4px;
+        border-radius: 8px;
+        background: var(--vscode-inputValidation-warningBackground, rgba(255,170,0,0.15));
+        color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+        border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(255,170,0,0.4));
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .orphan-badge:hover { filter: brightness(1.15); }
 
     .codicon { font-size: 14px; }
 
@@ -376,6 +405,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         <button class="action-btn" onclick="send('pushAction')">
             <span class="codicon codicon-cloud-upload"></span> Push
         </button>
+        ${hasSession ? `
+        <button class="action-btn ai-action" onclick="send('copyForAI')" title="Bundle files & copy to clipboard for AI tools">
+            <span class="codicon codicon-sparkle"></span> AI
+        </button>` : ''}
     </div>
 
     <div class="status-bar ${hasSession ? 'active' : ''}">

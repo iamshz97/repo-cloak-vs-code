@@ -2,7 +2,7 @@
   "name": "repo-cloak",
   "displayName": "Repo Cloak",
   "description": "Selectively extract and anonymize files from repositories. Pull from multiple repos, anonymize sensitive data, push back — all from VS Code.",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "icon": "images/icon.ico",
   "repository": {
     "type": "git",
@@ -144,6 +144,16 @@
         "command": "repo-cloak.clearFileSelectionSearch",
         "title": "Clear Search",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "repo-cloak.copyForAI",
+        "title": "Repo Cloak: Copy for AI",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "repo-cloak.resolveOrphans",
+        "title": "Repo Cloak: Resolve Orphaned Files",
+        "icon": "$(warning)"
       }
     ],
     "menus": {
@@ -169,6 +179,17 @@
           "group": "navigation@4"
         }
       ]
+    },
+    "configuration": {
+      "title": "Repo Cloak",
+      "properties": {
+        "repo-cloak.forcePull.orphanPolicy": {
+          "type": "string",
+          "enum": ["prompt", "delete", "keep"],
+          "default": "prompt",
+          "description": "What to do with files that no longer exist in the source repo when running Force Pull. 'prompt' asks each time, 'delete' removes them automatically, 'keep' leaves them alone."
+        }
+      }
     }
   },
   "scripts": {

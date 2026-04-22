@@ -338,3 +338,91 @@ export function getSourceLabels(mapping: MappingV2): string[] {
 export function getOriginalSourcePath(source: SourceEntry): string {
     return source.path;
 }
+
+// ─── Orphan / stale-file helpers ────────────────────────────────────────────────
+
+export interface StaleFile {
+    sourceLabel: string;
+    original: string;   // decrypted relative path in source repo
+    cloaked: string;    // relative path in cloaked workspace
+}
+
+/**
+ * Find files in the mapping whose original counterpart no longer exists in the
+ * source repository. Expects a fully decrypted mapping.
+ */
+export function getStaleFiles(mapping: MappingV2, label?: string): StaleFile[] {
+    const stale: StaleFile[] = [];
+    const sources = label
+        ? mapping.sources.filter(s => s.label === label)
+        : mapping.sources;
+
+    for (const s of sources) {
+        if (!s.path || !existsSync(s.path)) {
+            // Source root missing — treat all files as stale
+            for (const f of s.files) {
+                stale.push({ sourceLabel: s.label, original: f.original, cloaked: f.cloaked });
+            }
+            continue;
+        }
+        for (const f of s.files) {
+            const abs = join(s.path, f.original);
+            if (!existsSync(abs)) {
+                stale.push({ sourceLabel: s.label, original: f.original, cloaked: f.cloaked });
+            }
+        }
+    }
+
+    return stale;
+}
+
+/**
+ * Remove file entries from a source by their cloaked relative paths.
+ * Re-encrypts remaining `original` entries so the storage format is preserved.
+ */
+export function removeFilesFromSource(
+    mapping: MappingV2,
+    sourceLabel: string,
+    cloakedPaths: string[]
+): MappingV2 {
+    if (cloakedPaths.length === 0) { return mapping; }
+    const toRemove = new Set(cloakedPaths);
+    const secret = getOrCreateSecret();
+
+    const updatedSources = mapping.sources.map(s => {
+        if (s.label !== sourceLabel) { return s; }
+        const remaining = s.files.filter(f => !toRemove.has(f.cloaked));
+        // Re-encrypt the `original` field if mapping is encrypted
+        const reencoded = mapping.encrypted
+            ? remaining.map(f => ({
+                original: looksEncrypted(f.original) ? f.original : encrypt(f.original, secret),
+                cloaked: f.cloaked
+            }))
+            : remaining;
+        return { ...s, files: reencoded };
+    });
+
+    const totalFiles = updatedSources.reduce((sum, s) => sum + s.files.length, 0);
+
+    return {
+        ...mapping,
+        sources: updatedSources,
+        stats: {
+            ...mapping.stats,
+            totalFiles,
+            totalSources: updatedSources.length
+        },
+        updatedAt: new Date().toISOString()
+    };
+}
+
+/**
+ * Heuristic: encrypted strings stored by `crypto.encrypt` are base64-ish and
+ * usually contain a `:` separator. This avoids double-encrypting already-encrypted
+ * entries when the caller passes a raw mapping.
+ */
+function looksEncrypted(value: string): boolean {
+    if (typeof value !== 'string') { return false; }
+    const parts = value.split(':');
+    return parts.length === 3 && parts.every(p => /^[a-f0-9]+$/i.test(p));
+}

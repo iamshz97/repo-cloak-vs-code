@@ -109,3 +109,48 @@ export async function getFilesChangedInCommits(dirPath: string, commits: string[
         return [];
     }
 }
+
+/**
+ * Get a unified diff for one commit (vs its parent) or between two commits.
+ * If `commitB` is omitted, uses `git show --patch <commitA>`.
+ */
+export async function getCommitDiff(
+    dirPath: string,
+    commitA: string,
+    commitB?: string
+): Promise<string> {
+    try {
+        const cmd = commitB
+            ? `git diff --no-color ${commitA}..${commitB}`
+            : `git show --no-color --patch --pretty=fuller ${commitA}`;
+        const { stdout } = await execAsync(cmd, { cwd: dirPath, maxBuffer: 50 * 1024 * 1024 });
+        return stdout || '';
+    } catch (error) {
+        return '';
+    }
+}
+
+/**
+ * Get the contents of a file at a specific commit. Returns null on failure
+ * (e.g., file did not exist in that commit).
+ */
+export async function getFileAtCommit(
+    dirPath: string,
+    commit: string,
+    relativePath: string
+): Promise<string | null> {
+    try {
+        const { stdout } = await execAsync(
+            `git show ${commit}:${shellQuote(relativePath)}`,
+            { cwd: dirPath, maxBuffer: 50 * 1024 * 1024 }
+        );
+        return stdout;
+    } catch {
+        return null;
+    }
+}
+
+function shellQuote(value: string): string {
+    // Use single quotes; escape any embedded single quotes.
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+}

@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { join, resolve } from 'path';
-import { existsSync } from 'fs';
+import { join, resolve, dirname } from 'path';
+import { existsSync, unlinkSync, rmdirSync, readdirSync } from 'fs';
 import {
     loadMapping, loadRawMapping, getSourceLabels, getSourceByLabel,
-    decryptMappingV2
+    decryptMappingV2, getStaleFiles, removeFilesFromSource, saveMapping
 } from '../core/mapper';
 import { createAnonymizer, Replacement } from '../core/anonymizer';
 import { copyFiles } from '../core/copier';
@@ -109,6 +109,10 @@ export async function executeForcePullAll(
 
         vscode.window.showInformationMessage(`Force Pull complete for all sources.`);
 
+        for (const label of sourceLabels) {
+            await maybeHandleOrphans(cloakedDir, mapping, label, outputChannel);
+        }
+
     } catch (error) {
         vscode.window.showErrorMessage(`Force Pull failed: ${(error as Error).message}`);
     } finally {
@@ -188,9 +192,89 @@ export async function executeForcePullSource(
 
         vscode.window.showInformationMessage(`Updated ${validFiles.length} files for "${label}"`);
 
+        await maybeHandleOrphans(cloakedDir, mapping, label, outputChannel);
+
     } catch (error) {
         vscode.window.showErrorMessage(`Force Pull failed: ${(error as Error).message}`);
     } finally {
         sidebarProvider.refresh();
+    }
+}
+
+// ─── Orphan handling ────────────────────────────────────────────────────────────
+
+type OrphanPolicy = 'prompt' | 'delete' | 'keep';
+
+function getOrphanPolicy(): OrphanPolicy {
+    const cfg = vscode.workspace.getConfiguration('repo-cloak');
+    const v = cfg.get<string>('forcePull.orphanPolicy', 'prompt');
+    return (v === 'delete' || v === 'keep') ? v : 'prompt';
+}
+
+async function maybeHandleOrphans(
+    cloakedDir: string,
+    mapping: any,
+    label: string,
+    outputChannel: vscode.OutputChannel
+): Promise<void> {
+    const stale = getStaleFiles(mapping, label);
+    if (stale.length === 0) { return; }
+
+    const policy = getOrphanPolicy();
+
+    if (policy === 'keep') {
+        outputChannel.appendLine(`[orphan] "${label}" — ${stale.length} file(s) no longer in source (kept by policy).`);
+        return;
+    }
+
+    let shouldDelete = policy === 'delete';
+    if (policy === 'prompt') {
+        const choice = await vscode.window.showWarningMessage(
+            `${stale.length} file(s) in "${label}" no longer exist in the source repository.`,
+            { modal: true },
+            'Delete from cloaked workspace',
+            'Resolve interactively',
+            'Keep'
+        );
+        if (!choice || choice === 'Keep') { return; }
+        if (choice === 'Resolve interactively') {
+            await vscode.commands.executeCommand('repo-cloak.resolveOrphans', label);
+            return;
+        }
+        shouldDelete = true;
+    }
+
+    if (shouldDelete) {
+        const removed: string[] = [];
+        for (const s of stale) {
+            const abs = join(cloakedDir, s.cloaked);
+            try {
+                if (existsSync(abs)) { unlinkSync(abs); }
+                pruneEmptyDirs(dirname(abs), cloakedDir);
+                removed.push(s.cloaked);
+            } catch (err) {
+                outputChannel.appendLine(`[orphan] Failed to delete ${abs}: ${(err as Error).message}`);
+            }
+        }
+        // Reload raw mapping so we re-encrypt against the latest on-disk state.
+        const raw = loadRawMapping(cloakedDir);
+        if (raw) {
+            const updated = removeFilesFromSource(raw, label, removed);
+            saveMapping(cloakedDir, updated);
+        }
+        outputChannel.appendLine(`[orphan] "${label}" — removed ${removed.length} orphaned file(s).`);
+        vscode.window.showInformationMessage(`Removed ${removed.length} orphaned file(s) from "${label}".`);
+    }
+}
+
+function pruneEmptyDirs(startDir: string, stopAt: string): void {
+    let dir = startDir;
+    while (dir.startsWith(stopAt) && dir !== stopAt) {
+        try {
+            if (readdirSync(dir).length === 0) {
+                rmdirSync(dir);
+                dir = dirname(dir);
+            } else { break; }
+        } catch { break; }
     }
 }
