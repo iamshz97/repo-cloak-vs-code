@@ -198,30 +198,47 @@ export async function executeCopyForAI(
             bundleMd = buildBundle({ type: bundleType, sourceLabel: label, extra, files });
 
         } else if (mode.value === 'commit-diff') {
-            const commits = await getRecentCommits(sourceDir, 30);
+            const commits = await getRecentCommits(sourceDir, 50);
             if (commits.length === 0) {
                 vscode.window.showWarningMessage('No commits found.');
                 return;
             }
             const picked = await vscode.window.showQuickPick(
                 commits.map(c => ({ label: c.hash, description: c.message, value: c.hash })),
-                { canPickMany: true, title: 'Pick 1 commit (diff vs parent) or 2 commits (range)' }
+                { canPickMany: true, title: 'Pick commit(s): 1 = diff vs parent · 2 = range · 3+ = each commit diffed individually' }
             );
             if (!picked || picked.length === 0) { return; }
-            if (picked.length > 2) {
-                vscode.window.showErrorMessage('Pick at most 2 commits.');
-                return;
-            }
+
             const hashes = picked.map(p => (p as any).value as string);
-            // Order: oldest .. newest by their position in the recent list (newer first)
-            const ordered = hashes.length === 2
-                ? [...hashes].sort((a, b) =>
-                    commits.findIndex(c => c.hash === b) - commits.findIndex(c => c.hash === a))
-                : hashes;
+            // Sort oldest→newest (log is newest-first, so higher index = older)
+            const sorted = [...hashes].sort((a, b) =>
+                commits.findIndex(c => c.hash === b) - commits.findIndex(c => c.hash === a)
+            );
+
             const rawDiff = await vscode.window.withProgress(
                 { location: vscode.ProgressLocation.Window, title: '$(shield) Computing diff...' },
-                () => getCommitDiff(sourceDir, ordered[0], ordered[1])
+                async () => {
+                    if (sorted.length === 1) {
+                        // Single commit: diff vs its parent
+                        return getCommitDiff(sourceDir, sorted[0]);
+                    } else if (sorted.length === 2) {
+                        // Two commits: range diff oldest..newest
+                        return getCommitDiff(sourceDir, sorted[0], sorted[1]);
+                    } else {
+                        // 3+ commits: each commit's individual diff concatenated chronologically
+                        const parts: string[] = [];
+                        for (const hash of sorted) {
+                            const d = await getCommitDiff(sourceDir, hash);
+                            if (d.trim()) {
+                                const msg = commits.find(c => c.hash === hash)?.message || hash;
+                                parts.push(`# ${hash} — ${msg}\n\n${d}`);
+                            }
+                        }
+                        return parts.join('\n\n' + '─'.repeat(72) + '\n\n');
+                    }
+                }
             );
+
             if (!rawDiff.trim()) {
                 vscode.window.showWarningMessage('Empty diff.');
                 return;
@@ -235,7 +252,12 @@ export async function executeCopyForAI(
                 if (choice !== 'Continue') { return; }
             }
             const anonymizedDiff = anonymizer(rawDiff);
-            extra['Commits'] = ordered.join(ordered.length === 2 ? '..' : ' (vs parent)');
+            extra['Commits'] = sorted.length === 2
+                ? `${sorted[0]}..${sorted[1]}`
+                : sorted.length === 1
+                    ? `${sorted[0]} (vs parent)`
+                    : sorted.join(', ');
+            if (sorted.length >= 3) { extra['Diff mode'] = 'individual per-commit diffs, concatenated'; }
             bundleMd = buildBundle({ type: bundleType, sourceLabel: label, extra, diff: anonymizedDiff });
 
         } else {

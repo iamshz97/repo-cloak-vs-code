@@ -20,7 +20,58 @@ import {
     getSourceByLabel
 } from '../core/mapper';
 import { hasSecret, getOrCreateSecret, decryptReplacements } from '../core/crypto';
-import { addSourcePath, addDestPath } from '../core/path-cache';
+import { addSourcePath, addDestPath, getSourcePaths } from '../core/path-cache';
+
+/**
+ * Show recent sources first, with a "Browse…" fallback.
+ * Returns the chosen absolute path, or null if the user cancelled.
+ */
+async function pickSourceDirectory(): Promise<string | null> {
+    const recent = getSourcePaths().filter(existsSync);
+
+    if (recent.length > 0) {
+        type SourceItem = vscode.QuickPickItem & { fsPath?: string };
+        const items: SourceItem[] = [
+            ...recent.map(p => ({
+                label: basename(p),
+                description: p,
+                fsPath: p
+            })),
+            { label: '', kind: vscode.QuickPickItemKind.Separator } as SourceItem,
+            {
+                label: '$(folder-opened) Browse for repository…',
+                description: 'Open folder picker',
+                fsPath: undefined
+            }
+        ];
+
+        const pick = await vscode.window.showQuickPick(items, {
+            title: 'Select Source Repository',
+            placeHolder: 'Recent sources — or browse for a new one'
+        });
+
+        if (!pick) { return null; }
+
+        if (pick.fsPath) {
+            addSourcePath(pick.fsPath);
+            return pick.fsPath;
+        }
+        // fell through to "Browse…" — continue to folder dialog below
+    }
+
+    const uris = await vscode.window.showOpenDialog({
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        openLabel: 'Select Source Repository',
+        title: 'Which repo do you want to extract files from?'
+    });
+
+    if (!uris || uris.length === 0) { return null; }
+    const chosen = uris[0].fsPath;
+    addSourcePath(chosen);
+    return chosen;
+}
 
 export async function executePull(
     fileTreeProvider: FileTreeProvider,
@@ -29,17 +80,8 @@ export async function executePull(
 ): Promise<void> {
     try {
         // ── Step 1: Pick source folder ──────────────────────────────────────
-        const sourceUris = await vscode.window.showOpenDialog({
-            canSelectFiles: false,
-            canSelectFolders: true,
-            canSelectMany: false,
-            openLabel: 'Select Source Repository',
-            title: 'Which repo do you want to extract files from?'
-        });
-
-        if (!sourceUris || sourceUris.length === 0) { return; }
-        const sourceDir = sourceUris[0].fsPath;
-        addSourcePath(sourceDir);
+        const sourceDir = await pickSourceDirectory();
+        if (!sourceDir) { return; }
 
         // ── Step 2: Determine destination ───────────────────────────────────
         let destDir: string | null = null;
