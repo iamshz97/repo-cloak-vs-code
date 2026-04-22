@@ -314,19 +314,7 @@ export async function executePull(
         // ── Step 6: Keyword replacements ────────────────────────────────────
         let replacements: Replacement[] = await promptReplacementsWithPresets(existingReplacements);
 
-        // ── Step 7: Confirm ─────────────────────────────────────────────────
-        const confirm = await vscode.window.showInformationMessage(
-            `Pull ${selectedFiles.length} files from "${sourceLabel}" with ${replacements.length} replacement(s)?`,
-            { modal: true },
-            'Go'
-        );
-
-        if (confirm !== 'Go') {
-            vscode.window.showInformationMessage('Operation cancelled.');
-            return;
-        }
-
-        // ── Step 8: Copy and anonymize ──────────────────────────────────────
+        // ── Step 7: Copy and anonymize ──────────────────────────────────────
         await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Window,

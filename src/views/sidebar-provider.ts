@@ -4,8 +4,31 @@
  */
 
 import * as vscode from 'vscode';
-import { hasMapping, loadRawMapping, decryptMappingV2, MappingV2, getStaleFiles } from '../core/mapper';
+import { existsSync } from 'fs';
+import { hasMapping, loadRawMapping, decryptMappingV2, MappingV2, getStaleFiles, getOriginalSourcePath } from '../core/mapper';
 import { hasSecret, getOrCreateSecret } from '../core/crypto';
+
+function relativeTime(iso: string): string {
+    const then = new Date(iso).getTime();
+    if (isNaN(then)) { return ''; }
+    const sec = Math.max(1, Math.floor((Date.now() - then) / 1000));
+    if (sec < 60)        { return `${sec}s ago`; }
+    if (sec < 3600)      { return `${Math.floor(sec / 60)}m ago`; }
+    if (sec < 86400)     { return `${Math.floor(sec / 3600)}h ago`; }
+    if (sec < 86400 * 7) { return `${Math.floor(sec / 86400)}d ago`; }
+    return new Date(iso).toLocaleDateString();
+}
+
+function sourceHealth(mapping: MappingV2, label: string): 'ok' | 'partial' | 'gone' {
+    const src = mapping.sources.find(s => s.label === label);
+    if (!src) { return 'gone'; }
+    const sourcePath = getOriginalSourcePath(src);
+    if (!sourcePath || !existsSync(sourcePath)) { return 'gone'; }
+    if (mapping.encrypted) { return 'ok'; } // can't check files without decrypted paths
+    const stale = getStaleFiles(mapping, label).length;
+    if (stale === 0) { return 'ok'; }
+    return 'partial';
+}
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'repo-cloak.sidebar';
@@ -159,10 +182,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 const orphanBadge = orphanCount > 0
                     ? `<span class="orphan-badge" title="${orphanCount} file(s) no longer in source" onclick="send('resolveOrphans','${label}', this)">${orphanCount}</span>`
                     : '';
+                const health = m ? sourceHealth(m, s.label) : 'ok';
+                const healthTitle = health === 'ok'
+                    ? 'Source repo is reachable'
+                    : health === 'partial'
+                        ? 'Some files are no longer in the source repo'
+                        : 'Source repo path is not reachable';
                 return `
                     <div class="list-item">
                         <div class="list-item-content">
-                            <span class="codicon codicon-package dim"></span>
+                            <span class="health-dot health-${health}" title="${healthTitle}"></span>
                             <span class="list-item-label">${label}</span>
                             ${orphanBadge}
                             <span class="list-item-desc">${fileCount}</span>
@@ -190,8 +219,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             ? (m.replacements as any[]).map(r => {
                 const orig = r.encrypted ? 'encrypted' : escapeHtml(r.original || '');
                 const rawOrig = r.original ? r.original.replace(/'/g, "\\'") : '';
+                const filterKey = (r.encrypted ? '' : (r.original || '') + ' ' + (r.replacement || '')).toLowerCase();
                 return `
-                    <div class="list-item replacement">
+                    <div class="list-item replacement" data-filter="${escapeHtml(filterKey)}">
                         <div class="list-item-content">
                             <code class="from">${orig}</code>
                             <span class="arrow">&rarr;</span>
@@ -205,6 +235,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     </div>`;
             }).join('')
             : '<p class="empty">No replacements</p>';
+
+        // Recent activity feed (from pullHistory)
+        const recent = (m?.pullHistory || []).slice(-6).reverse();
+        const historyHtml = recent.length > 0
+            ? recent.map(h => {
+                const when = relativeTime(h.timestamp);
+                const label = escapeHtml(h.sourceLabel);
+                const added = h.filesAdded > 0 ? `+${h.filesAdded}` : '±0';
+                return `
+                    <div class="history-row" title="${when} — ${label} (${added} file${h.filesAdded === 1 ? '' : 's'})">
+                        <span class="codicon codicon-arrow-down history-icon"></span>
+                        <span class="history-label">${label}</span>
+                        <span class="history-delta">${added}</span>
+                        <span class="history-when">${when}</span>
+                    </div>`;
+            }).join('')
+            : '';
 
         const hasSession = !!m;
         const totalSources = m?.stats?.totalSources || m?.sources?.length || 0;
@@ -438,6 +485,65 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     .codicon { font-size: 14px; }
 
+    /* ── Health dot ── */
+    .health-dot {
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        background: var(--vscode-descriptionForeground);
+        opacity: 0.6;
+    }
+    .health-ok      { background: var(--vscode-testing-iconPassed, #73c991); }
+    .health-partial { background: var(--vscode-editorWarning-foreground, #cca700); }
+    .health-gone    { background: var(--vscode-editorError-foreground, #f48771); }
+
+    /* ── Search filter ── */
+    .filter-input {
+        width: 100%;
+        padding: 3px 6px;
+        margin-bottom: 4px;
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        border: 1px solid var(--vscode-input-border, transparent);
+        border-radius: var(--item-radius);
+        font: inherit;
+        font-size: 11px;
+        outline: none;
+    }
+    .filter-input:focus { border-color: var(--vscode-focusBorder); }
+    .list-item.filtered-out { display: none; }
+
+    /* ── History feed ── */
+    .history-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 2px 6px;
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        min-height: 20px;
+    }
+    .history-icon { font-size: 11px; opacity: 0.55; }
+    .history-label {
+        color: var(--vscode-foreground);
+        opacity: 0.85;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+        min-width: 0;
+    }
+    .history-delta {
+        font-variant-numeric: tabular-nums;
+        opacity: 0.7;
+        flex-shrink: 0;
+    }
+    .history-when {
+        font-variant-numeric: tabular-nums;
+        opacity: 0.55;
+        flex-shrink: 0;
+    }
+
     @keyframes spin {
         100% { transform: rotate(360deg); }
     }
@@ -496,14 +602,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 <button class="icon-btn xs" onclick="send('addReplacement')" title="Add replacement"><span class="codicon codicon-add"></span></button>
             </div>
         </div>
+        ${(m?.replacements?.length || 0) > 6 ? `<input class="filter-input" id="replFilter" type="text" placeholder="Filter replacements…" oninput="filterReplacements(this.value)" />` : ''}
         ${replacementsHtml}
     </div>
 
-    ${hasSession ? `
-    <div class="action-bar" style="border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); border-bottom: none; padding-top: 10px;">
-        <button class="action-btn" onclick="send('pushAll')">
-            <span class="codicon codicon-repo-push"></span> Push All
-        </button>
+    ${historyHtml ? `
+    <div class="section">
+        <div class="section-header">
+            <span class="section-title">Recent activity</span>
+        </div>
+        ${historyHtml}
     </div>
     ` : ''}
 
@@ -529,6 +637,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 }
             }
             vscode.postMessage({ command: cmd, label: label || undefined });
+        }
+        function filterReplacements(query) {
+            const q = (query || '').trim().toLowerCase();
+            document.querySelectorAll('.list-item.replacement').forEach(el => {
+                const key = el.getAttribute('data-filter') || '';
+                el.classList.toggle('filtered-out', q !== '' && !key.includes(q));
+            });
         }
     </script>
 </body>
