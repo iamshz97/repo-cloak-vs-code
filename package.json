@@ -2,7 +2,7 @@
   "name": "repo-cloak",
   "displayName": "Repo Cloak",
   "description": "Selectively extract and anonymize files from repositories. Pull from multiple repos, anonymize sensitive data, push back — all from VS Code.",
-  "version": "0.4.4",
+  "version": "1.1.0",
   "icon": "images/icon.ico",
   "repository": {
     "type": "git",
@@ -294,6 +294,65 @@
           }
         ]
       }
+    ],
+    "languageModelTools": [
+      {
+        "name": "repo_cloak_probe_file",
+        "displayName": "Repo Cloak: Probe Source File",
+        "modelDescription": "Check whether a file exists in any cloaked source repository, given a path or filename hint. Returns matches with their relativePath, sourceLabel, matchType (exact|basename|substring), and status (available|already-pulled|banned). DOES NOT expose directory listings — you must guess paths or filenames. Use this before repo_cloak_request_pull to validate which files exist. Cheap and read-only — no user confirmation required.",
+        "userDescription": "Lets Copilot check if a file exists in your cloaked sources without exposing your directory structure.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "repoCloakProbe",
+        "icon": "$(search)",
+        "tags": ["repo-cloak", "privacy"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "pathHint": {
+              "type": "string",
+              "description": "A relative path (e.g. 'src/utils/auth.ts') or a bare filename (e.g. 'auth.ts'). Required."
+            },
+            "sourceLabel": {
+              "type": "string",
+              "description": "Optional: limit search to one source label. If omitted, all sources are searched."
+            },
+            "maxResults": {
+              "type": "number",
+              "description": "Optional cap on results (default 10, hard max 25)."
+            }
+          },
+          "required": ["pathHint"]
+        }
+      },
+      {
+        "name": "repo_cloak_request_pull",
+        "displayName": "Repo Cloak: Request File Pull",
+        "modelDescription": "Request that the user pull a specific list of files from a cloaked source into the cloaked workspace. The user MUST confirm before any file is read or written. Files are anonymized and secret-scanned automatically. Use repo_cloak_probe_file first to validate paths exist. Returns counts of pulled, skipped (already pulled / banned / not found / contained secrets), and any errors.",
+        "userDescription": "Lets Copilot ask you to pull additional files into the cloaked workspace. You always confirm.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "repoCloakPull",
+        "icon": "$(cloud-download)",
+        "tags": ["repo-cloak", "privacy"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sourceLabel": {
+              "type": "string",
+              "description": "Source label the files belong to. Required."
+            },
+            "relativePaths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Source-relative file paths to pull. Required, non-empty."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Brief reason for needing these files — shown to the user in the confirmation modal."
+            }
+          },
+          "required": ["sourceLabel", "relativePaths"]
+        }
+      }
     ]
   },
   "scripts": {
@@ -304,7 +363,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "@types/vscode": "^1.116.0",
+    "@types/vscode": "^1.95.0",
     "typescript": "^5.3.0"
   }
 }

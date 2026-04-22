@@ -21,6 +21,8 @@ import { executePrSummary, executeManagePrTemplates } from './commands/pr-summar
 import { registerChatParticipant } from './chat/participant';
 import { executeBanFile } from './commands/ban-file';
 import { notifySuccess, notifyWarn } from './core/notify';
+import { ProbeFileTool } from './lm-tools/probe-file';
+import { RequestPullTool } from './lm-tools/request-pull';
 
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Repo Cloak');
@@ -472,6 +474,12 @@ export function activate(context: vscode.ExtensionContext) {
                 `Preset "${preset.name}" updated — ${combined.length} pair(s).`
             );
         })
+    );
+
+    // ─── Language Model Tools (Copilot file probe + pull request) ───────────
+    context.subscriptions.push(
+        vscode.lm.registerTool('repo_cloak_probe_file', new ProbeFileTool()),
+        vscode.lm.registerTool('repo_cloak_request_pull', new RequestPullTool(sidebarProvider, outputChannel))
     );
 
     // ─── Auto-refresh ───────────────────────────────────────────────────────
