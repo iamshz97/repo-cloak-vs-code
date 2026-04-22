@@ -355,6 +355,17 @@ export async function executeForcePushSource(
             return;
         }
 
+        // Confirm — this writes back to the original source repo
+        const confirm = await vscode.window.showWarningMessage(
+            `Force Push will overwrite files in the source repo for "${label}".`,
+            {
+                modal: true,
+                detail: `Source: ${source.path}\n\nThis writes the cloaked (de-anonymized) files back to your original repository. Make sure that's what you intended — Force Pull updates the cloaked copy from the source instead.`
+            },
+            'Force Push'
+        );
+        if (confirm !== 'Force Push') { return; }
+
         outputChannel.clear();
         outputChannel.appendLine(`[Force Push] Restoring "${label}" to original path: ${source.path}...`);
 

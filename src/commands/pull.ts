@@ -249,7 +249,11 @@ export async function executePull(
         // ── Step 4: Show file tree for selection ────────────────────────────
         selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
             precheck: precheck.length > 0 ? precheck : undefined,
-            allowedPaths
+            allowedPaths,
+            purpose: {
+                title: `Pull → ${sourceLabel}`,
+                message: `Pick files to extract from "${sourceLabel}". Use Select All / Deselect All in the toolbar, then Confirm (✓) when ready.`
+            }
         });
 
         if (selectedFiles.length === 0) {
@@ -591,7 +595,12 @@ export async function executePullSource(
         }
 
         // Show file tree for the source directory
-        let selectedFiles = await fileTreeProvider.startSelection(sourceDir);
+        let selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
+            purpose: {
+                title: `Pull more → ${label}`,
+                message: `Add more files to "${label}". Confirm (✓) when done.`
+            }
+        });
 
         if (selectedFiles.length === 0) {
             vscode.window.showWarningMessage('No files selected.');
@@ -772,7 +781,11 @@ export async function executePullSourceGit(
         const allowedPaths = buildAllowedPaths(absolutePaths, sourceDir);
         let selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
             precheck: absolutePaths,
-            allowedPaths
+            allowedPaths,
+            purpose: {
+                title: `Pull (Git) → ${label}`,
+                message: `Confirm Git-changed files to pull into "${label}".`
+            }
         });
 
         if (selectedFiles.length === 0) {

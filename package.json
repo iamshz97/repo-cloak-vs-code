@@ -146,6 +146,16 @@
         "icon": "$(clear-all)"
       },
       {
+        "command": "repo-cloak.selectAllFiles",
+        "title": "Select All",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "repo-cloak.deselectAllFiles",
+        "title": "Deselect All",
+        "icon": "$(close-all)"
+      },
+      {
         "command": "repo-cloak.copyForAI",
         "title": "Repo Cloak: Copy for AI",
         "icon": "$(sparkle)"
@@ -174,14 +184,24 @@
           "group": "navigation@2"
         },
         {
+          "command": "repo-cloak.selectAllFiles",
+          "when": "view == repo-cloak.fileTree && repo-cloak.fileTreeVisible",
+          "group": "navigation@3"
+        },
+        {
+          "command": "repo-cloak.deselectAllFiles",
+          "when": "view == repo-cloak.fileTree && repo-cloak.fileTreeVisible",
+          "group": "navigation@4"
+        },
+        {
           "command": "repo-cloak.confirmFileSelection",
           "when": "view == repo-cloak.fileTree",
-          "group": "navigation@3"
+          "group": "navigation@5"
         },
         {
           "command": "repo-cloak.cancelFileSelection",
           "when": "view == repo-cloak.fileTree",
-          "group": "navigation@4"
+          "group": "navigation@6"
         }
       ]
     },

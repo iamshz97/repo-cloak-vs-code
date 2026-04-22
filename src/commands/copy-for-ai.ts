@@ -122,7 +122,12 @@ export async function executeCopyForAI(
         // ── Branch on mode ──────────────────────────────────────────────────
         if (mode.value === 'manual-cloaked') {
             // Browse the cloaked subdirectory; files are already anonymized.
-            const picked = await fileTreeProvider.startSelection(cloakedSubdir);
+            const picked = await fileTreeProvider.startSelection(cloakedSubdir, {
+                purpose: {
+                    title: `Copy for AI → ${label}`,
+                    message: `Pick cloaked files to bundle for AI tools.`
+                }
+            });
             if (picked.length === 0) {
                 vscode.window.showInformationMessage('No files selected.');
                 return;
@@ -132,7 +137,12 @@ export async function executeCopyForAI(
             bundleMd = buildBundle({ type: bundleType, sourceLabel: label, extra, files });
 
         } else if (mode.value === 'manual-source') {
-            const picked = await fileTreeProvider.startSelection(sourceDir);
+            const picked = await fileTreeProvider.startSelection(sourceDir, {
+                purpose: {
+                    title: `Copy for AI → ${label} (source)`,
+                    message: `Pick source files to anonymize and bundle for AI tools.`
+                }
+            });
             if (picked.length === 0) {
                 vscode.window.showInformationMessage('No files selected.');
                 return;
@@ -156,7 +166,11 @@ export async function executeCopyForAI(
             }
             const picked = await fileTreeProvider.startSelection(sourceDir, {
                 precheck: candidates,
-                allowedPaths: buildAllowedPaths(candidates, sourceDir)
+                allowedPaths: buildAllowedPaths(candidates, sourceDir),
+                purpose: {
+                    title: `Copy for AI → ${label} (uncommitted)`,
+                    message: `Confirm uncommitted files to bundle.`
+                }
             });
             if (picked.length === 0) { return; }
             const findings = await scanIfNeeded(picked, outputChannel);
@@ -186,7 +200,11 @@ export async function executeCopyForAI(
             }
             const refined = await fileTreeProvider.startSelection(sourceDir, {
                 precheck: candidates,
-                allowedPaths: buildAllowedPaths(candidates, sourceDir)
+                allowedPaths: buildAllowedPaths(candidates, sourceDir),
+                purpose: {
+                    title: `Copy for AI → ${label} (commits)`,
+                    message: `Refine files from selected commits before bundling.`
+                }
             });
             if (refined.length === 0) { return; }
             const findings = await scanIfNeeded(refined, outputChannel);

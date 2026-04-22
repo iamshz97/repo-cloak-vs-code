@@ -45,6 +45,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
 
     private _searchedPaths: Set<string> | null = null;
     private _searchFilter: string = '';
+    private _purpose: { title: string; message?: string } | null = null;
 
     get checkedPaths(): Set<string> {
         return this._checkedPaths;
@@ -88,6 +89,8 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         this._searchedPaths = null;
         this._searchFilter = '';
         this._resolveSelection = null;
+        this._purpose = null;
+        this._applyPurposeToView();
         this._onDidChangeTreeData.fire();
     }
 
@@ -97,13 +100,27 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     startSelection(rootPath: string, options?: {
         allowedPaths?: Set<string>;
         precheck?: string[];
+        purpose?: { title: string; message?: string };
     }): Promise<string[]> {
         this.setRoot(rootPath, options);
+        this._purpose = options?.purpose || null;
+        this._applyPurposeToView();
         vscode.commands.executeCommand('setContext', 'repo-cloak.fileTreeVisible', true);
 
         return new Promise((resolve) => {
             this._resolveSelection = resolve;
         });
+    }
+
+    private _applyPurposeToView(): void {
+        if (!this._treeView) { return; }
+        if (this._purpose) {
+            this._treeView.title = this._purpose.title;
+            this._treeView.message = this._purpose.message;
+        } else {
+            this._treeView.title = 'Repo Cloak — File Selection';
+            this._treeView.message = undefined;
+        }
     }
 
     /**
@@ -146,12 +163,79 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
      * Cancel the selection
      */
     cancelSelection(): void {
+        const purposeTitle = this._purpose?.title;
         vscode.commands.executeCommand('setContext', 'repo-cloak.fileTreeVisible', false);
         if (this._resolveSelection) {
             this._resolveSelection([]);
             this._resolveSelection = null;
         }
         this.clear();
+        vscode.window.setStatusBarMessage(
+            `$(circle-slash) ${purposeTitle ? `${purposeTitle} cancelled` : 'File selection cancelled'}`,
+            3000
+        );
+    }
+
+    /**
+     * Select all visible files (respects allowedPaths and search filter)
+     */
+    selectAll(): void {
+        if (!this._rootPath) { return; }
+        const allFiles = getAllFiles(this._rootPath);
+        for (const f of allFiles) {
+            if (this._allowedPaths && !this._allowedPaths.has(f.absolutePath)) { continue; }
+            if (this._searchedPaths && !this._searchedPaths.has(f.absolutePath)) { continue; }
+            this._checkedPaths.add(f.absolutePath);
+        }
+        // Tick parent folders bottom-up so the UI reflects the full selection
+        this._tickFullySelectedDirs(this._rootPath);
+        this._onDidChangeTreeData.fire();
+    }
+
+    /**
+     * Walk the visible tree post-order; mark a directory as checked
+     * iff every visible child is checked. Returns true if `dirPath` got ticked.
+     */
+    private _tickFullySelectedDirs(dirPath: string): boolean {
+        let entries: { name: string; isDir: boolean; fullPath: string }[];
+        try {
+            entries = readdirSync(dirPath, { withFileTypes: true })
+                .filter(e => !shouldIgnore(e.name))
+                .map(e => ({ name: e.name, isDir: e.isDirectory(), fullPath: join(dirPath, e.name) }))
+                .filter(e => {
+                    if (this._allowedPaths && !this._allowedPaths.has(e.fullPath) && !this._isPathAncestorOfAllowed(e.fullPath)) { return false; }
+                    if (this._searchedPaths && !this._searchedPaths.has(e.fullPath) && !this._isPathAncestorOfSearched(e.fullPath)) { return false; }
+                    return true;
+                });
+        } catch {
+            return false;
+        }
+
+        if (entries.length === 0) { return false; }
+
+        let allChildrenChecked = true;
+        for (const e of entries) {
+            if (e.isDir) {
+                const childChecked = this._tickFullySelectedDirs(e.fullPath);
+                if (!childChecked) { allChildrenChecked = false; }
+            } else if (!this._checkedPaths.has(e.fullPath)) {
+                allChildrenChecked = false;
+            }
+        }
+
+        if (allChildrenChecked) {
+            this._checkedPaths.add(dirPath);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Deselect all files
+     */
+    deselectAll(): void {
+        this._checkedPaths.clear();
+        this._onDidChangeTreeData.fire();
     }
 
     /**

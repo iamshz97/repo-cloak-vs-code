@@ -304,6 +304,18 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.selectAllFiles', () => {
+            fileTreeProvider.selectAll();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.deselectAllFiles', () => {
+            fileTreeProvider.deselectAll();
+        })
+    );
+
     // ─── Copy for AI ────────────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.copyForAI', (label?: string) => {

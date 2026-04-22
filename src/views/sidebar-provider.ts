@@ -78,10 +78,31 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'managePresets':
                     vscode.commands.executeCommand('repo-cloak.managePresets');
                     break;
+                case 'sourceMenu':
+                    await this._showSourceMenu(message.label);
+                    break;
             }
         });
 
         this.refresh();
+    }
+
+    private async _showSourceMenu(label: string): Promise<void> {
+        if (!label) { return; }
+        const items: (vscode.QuickPickItem & { cmd?: string })[] = [
+            { label: '$(sparkle) Copy for AI', description: 'Bundle files & copy to clipboard', cmd: 'repo-cloak.copyForAI' },
+            { label: '$(cloud-download) Pull more files', description: 'Interactive file picker', cmd: 'repo-cloak.pullSource' },
+            { label: '$(git-compare) Pull from Git changes', description: 'Uncommitted or commit-based', cmd: 'repo-cloak.pullSourceGit' },
+            { label: '', kind: vscode.QuickPickItemKind.Separator },
+            { label: '$(trash) Remove source', description: 'Delete from this workspace', cmd: 'repo-cloak.removeSource' }
+        ] as any;
+        const pick = await vscode.window.showQuickPick(items, {
+            title: `Source: ${label}`,
+            placeHolder: 'Choose an action'
+        });
+        if (pick?.cmd) {
+            vscode.commands.executeCommand(pick.cmd, label);
+        }
     }
 
     refresh(): void {
@@ -130,34 +151,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 const label = escapeHtml(s.label);
                 const orphanCount = m ? getStaleFiles(m, s.label).length : 0;
                 const orphanBadge = orphanCount > 0
-                    ? `<span class="orphan-badge" title="${orphanCount} file(s) no longer in source" onclick="send('resolveOrphans','${label}', this)">⚠ ${orphanCount}</span>`
+                    ? `<span class="orphan-badge" title="${orphanCount} file(s) no longer in source" onclick="send('resolveOrphans','${label}', this)">${orphanCount}</span>`
                     : '';
                 return `
                     <div class="list-item">
                         <div class="list-item-content">
-                            <span class="codicon codicon-package"></span>
+                            <span class="codicon codicon-package dim"></span>
                             <span class="list-item-label">${label}</span>
-                            <span class="list-item-desc">${fileCount} files</span>
                             ${orphanBadge}
+                            <span class="list-item-desc">${fileCount}</span>
                         </div>
                         <div class="list-item-actions">
-                            <button class="icon-btn ai-btn" onclick="send('copyForAI','${label}', this)" title="Copy for AI (clipboard)">
+                            <button class="icon-btn" onclick="send('copyForAI','${label}', this)" title="Copy for AI">
                                 <span class="codicon codicon-sparkle"></span>
                             </button>
-                            <button class="icon-btn" onclick="send('pullSourceGit','${label}', this)" title="Pull from Git changes">
-                                <span class="codicon codicon-git-compare"></span>
+                            <button class="icon-btn pull-btn" onclick="send('forcePullSource','${label}', this)" title="Force Pull — refresh cloaked copy from source (asks to confirm)">
+                                <span class="codicon codicon-arrow-down"></span>
                             </button>
-                            <button class="icon-btn" onclick="send('pullSource','${label}', this)" title="Interactive Pull (add files)">
-                                <span class="codicon codicon-cloud-download"></span>
+                            <button class="icon-btn push-btn" onclick="send('forcePushSource','${label}', this)" title="Force Push — write cloaked changes back to source (asks to confirm)">
+                                <span class="codicon codicon-arrow-up"></span>
                             </button>
-                            <button class="icon-btn" onclick="send('forcePullSource','${label}', this)" title="Force Pull (update files)">
-                                <span class="codicon codicon-repo-pull"></span>
-                            </button>
-                            <button class="icon-btn" onclick="send('forcePushSource','${label}', this)" title="Force Push (restore files)">
-                                <span class="codicon codicon-repo-push"></span>
-                            </button>
-                            <button class="icon-btn danger" onclick="send('removeSource','${label}', this)" title="Remove">
-                                <span class="codicon codicon-trash"></span>
+                            <span class="action-divider"></span>
+                            <button class="icon-btn" onclick="send('sourceMenu','${label}', this)" title="More actions…">
+                                <span class="codicon codicon-ellipsis"></span>
                             </button>
                         </div>
                     </div>`;
@@ -277,31 +293,32 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         align-items: center;
         justify-content: space-between;
         margin-bottom: 4px;
+        height: 22px;
     }
     .section-title {
         font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
+        letter-spacing: 0.6px;
+        color: var(--vscode-descriptionForeground);
     }
-    .section-action {
-        font-size: 11px;
-        color: var(--vscode-textLink-foreground);
-        background: none;
-        border: none;
-        cursor: pointer;
-        font: inherit;
-        padding: 0;
+    .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        opacity: 0.55;
+        transition: opacity 0.1s;
     }
-    .section-action:hover { text-decoration: underline; }
+    .header-actions:hover { opacity: 1; }
+    .section-header > .icon-btn { opacity: 0.55; transition: opacity 0.1s; }
+    .section-header > .icon-btn:hover { opacity: 1; }
 
     /* ── List items ─── */
     .list-item {
+        position: relative;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        padding: 3px 6px;
+        padding: 2px 6px;
         border-radius: var(--item-radius);
         min-height: 24px;
     }
@@ -311,28 +328,40 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .list-item-content {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         min-width: 0;
         flex: 1;
+        padding-right: 4px;
     }
     .list-item-label {
         font-size: 12px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        flex: 1;
+        min-width: 0;
     }
     .list-item-desc {
         font-size: 11px;
         color: var(--vscode-descriptionForeground);
         white-space: nowrap;
+        flex-shrink: 0;
+        font-variant-numeric: tabular-nums;
+        opacity: 0.7;
     }
+    .list-item:hover .list-item-desc { opacity: 0; }
     .list-item-actions {
+        position: absolute;
+        right: 4px;
+        top: 50%;
+        transform: translateY(-50%);
         display: flex;
-        gap: 2px;
+        gap: 0;
         opacity: 0;
         transition: opacity 0.1s;
     }
     .list-item:hover .list-item-actions { opacity: 1; }
+    .dim { opacity: 0.55; }
 
     /* ── Replacements ─── */
     .replacement {
@@ -364,24 +393,42 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         border-radius: var(--item-radius);
         cursor: pointer;
         color: var(--vscode-foreground);
+        padding: 0;
     }
     .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
     .icon-btn.danger:hover { color: var(--vscode-errorForeground); }
-    .icon-btn.ai-btn { color: var(--vscode-charts-purple, #c586c0); }
-    .icon-btn.ai-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
+    .icon-btn.xs { width: 18px; height: 18px; }
+    .icon-btn.xs .codicon { font-size: 12px; }
+
+    /* Pull / Push — bold arrows, easy to scan */
+    .icon-btn.pull-btn .codicon,
+    .icon-btn.push-btn .codicon { font-size: 14px; font-weight: bold; }
+
+    .action-divider {
+        width: 1px;
+        height: 12px;
+        background: var(--vscode-widget-border, var(--vscode-panel-border));
+        margin: 0 1px;
+        opacity: 0.35;
+        align-self: center;
+    }
 
     .orphan-badge {
         font-size: 10px;
-        padding: 1px 6px;
-        margin-left: 4px;
-        border-radius: 8px;
-        background: var(--vscode-inputValidation-warningBackground, rgba(255,170,0,0.15));
+        padding: 0 5px;
+        min-width: 16px;
+        height: 14px;
+        line-height: 14px;
+        text-align: center;
+        border-radius: 7px;
+        background: var(--vscode-inputValidation-warningBackground, rgba(255,170,0,0.18));
         color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
-        border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(255,170,0,0.4));
         cursor: pointer;
         white-space: nowrap;
+        flex-shrink: 0;
+        font-variant-numeric: tabular-nums;
     }
-    .orphan-badge:hover { filter: brightness(1.15); }
+    .orphan-badge:hover { filter: brightness(1.2); }
 
     .codicon { font-size: 14px; }
 
@@ -430,7 +477,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <div class="section">
         <div class="section-header">
             <span class="section-title">Sources</span>
-            <button class="section-action" onclick="send('addSource')">Add</button>
+            <button class="icon-btn xs" onclick="send('addSource')" title="Add source"><span class="codicon codicon-add"></span></button>
         </div>
         ${sourcesHtml}
     </div>
@@ -438,9 +485,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <div class="section">
         <div class="section-header">
             <span class="section-title">Replacements</span>
-            <div style="display:flex;gap:2px;align-items:center;">
-                <button class="icon-btn" onclick="send('managePresets')" title="Manage replacement presets"><span class="codicon codicon-bookmark"></span></button>
-                <button class="section-action" onclick="send('addReplacement')">Add</button>
+            <div class="header-actions">
+                <button class="icon-btn xs" onclick="send('managePresets')" title="Manage presets"><span class="codicon codicon-bookmark"></span></button>
+                <button class="icon-btn xs" onclick="send('addReplacement')" title="Add replacement"><span class="codicon codicon-add"></span></button>
             </div>
         </div>
         ${replacementsHtml}
@@ -456,8 +503,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     <script>
         const vscode = acquireVsCodeApi();
+        const NO_SPINNER = new Set(['sourceMenu', 'managePresets', 'addSource', 'addReplacement', 'resolveOrphans']);
         function send(cmd, label, btn) {
-            if (btn) {
+            if (btn && !NO_SPINNER.has(cmd)) {
                 const icon = btn.querySelector('.codicon');
                 if (icon) {
                     icon.className = 'codicon codicon-sync spinning';

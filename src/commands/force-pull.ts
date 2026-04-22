@@ -165,6 +165,17 @@ export async function executeForcePullSource(
             return;
         }
 
+        // Confirm — this overwrites the cloaked workspace copy
+        const confirm = await vscode.window.showWarningMessage(
+            `Force Pull will overwrite the cloaked copy of "${label}" with files from the source.`,
+            {
+                modal: true,
+                detail: `Source: ${sourceDir}\n\nAny unsaved edits to the cloaked copy will be lost. Force Push writes cloaked changes back to the source instead.`
+            },
+            'Force Pull'
+        );
+        if (confirm !== 'Force Pull') { return; }
+
         outputChannel.clear();
         outputChannel.appendLine(`[Force Pull Source] Updating mapped files for "${label}"...`);
 
