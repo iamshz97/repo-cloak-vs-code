@@ -24,6 +24,7 @@ import { addSourcePath, addDestPath, getSourcePaths } from '../core/path-cache';
 import { getPresets, savePreset, ReplacementPair } from '../core/presets';
 import { commitCloakedChange, pullSubject } from '../core/cloaked-git';
 import { getBannedSet, hasBanList } from '../core/ban-list';
+import { notifySuccess, notifyWarn, notifyInfo } from '../core/notify';
 
 /**
  * Show recent sources first, with a "Browse…" fallback.
@@ -206,7 +207,7 @@ export async function executePull(
                     () => getChangedFiles(sourceDir)
                 );
                 if (gitFiles.length === 0) {
-                    vscode.window.showWarningMessage('No uncommitted files found.');
+                    notifyWarn('No uncommitted files found.');
                     return;
                 }
                 precheck = gitFiles.map(f => resolve(sourceDir, f)).filter(f => existsSync(f));
@@ -214,7 +215,7 @@ export async function executePull(
             } else if ((gitMode as any).value === 'commits') {
                 const commits = await getRecentCommits(sourceDir, 15);
                 if (commits.length === 0) {
-                    vscode.window.showWarningMessage('No commits found.');
+                    notifyWarn('No commits found.');
                     return;
                 }
                 const selected = await vscode.window.showQuickPick(
@@ -239,7 +240,7 @@ export async function executePull(
                     () => getFilesChangedInCommits(sourceDir, [commitHash.trim()])
                 );
                 if (commitFiles.length === 0) {
-                    vscode.window.showWarningMessage('No files found in that commit.');
+                    notifyWarn('No files found in that commit.');
                     return;
                 }
                 precheck = commitFiles.map(f => resolve(sourceDir, f)).filter(f => existsSync(f));
@@ -415,7 +416,7 @@ export async function executePull(
         );
         // ── Done! ───────────────────────────────────────────────────────────
         sidebarProvider.refresh();
-        vscode.window.showInformationMessage(`Extracted ${selectedFiles.length} files from "${sourceLabel}"`);
+        notifySuccess(`Extracted ${selectedFiles.length} files from "${sourceLabel}"`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Pull failed: ${(error as Error).message}`);
@@ -445,7 +446,7 @@ async function promptReplacements(): Promise<Replacement[]> {
         if (!replacement) { break; }
 
         replacements.push({ original: original.trim(), replacement: replacement.trim() });
-        vscode.window.showInformationMessage(`Added: "${original}" \u2192 "${replacement}"`);
+        notifySuccess(`Added: "${original}" → "${replacement}"`);
     }
 
     return replacements;
@@ -491,7 +492,7 @@ export async function promptReplacementsWithPresets(
         const chosen = presets.find(p => p.name === (presetPick as any).value);
         if (chosen) {
             loaded = chosen.pairs.map(p => ({ original: p.original, replacement: p.replacement }));
-            vscode.window.showInformationMessage(`Loaded preset "${chosen.name}" — ${loaded.length} pair(s)`);
+            notifySuccess(`Loaded preset "${chosen.name}" — ${loaded.length} pair(s)`);
         }
     }
 
@@ -521,12 +522,12 @@ export async function promptReplacementsWithPresets(
             if (name?.trim()) {
                 const pairsToSave = [...loaded, ...manual] as ReplacementPair[];
                 savePreset({ name: name.trim(), pairs: pairsToSave });
-                vscode.window.showInformationMessage(`Preset "${name.trim()}" saved.`);
+                notifySuccess(`Preset "${name.trim()}" saved.`);
             }
         } else if (saveChoice === 'Append to existing preset') {
             const existing = getPresets();
             if (existing.length === 0) {
-                vscode.window.showWarningMessage('No existing presets to append to. Save as new instead.');
+                notifyWarn('No existing presets to append to. Save as new instead.');
             } else {
                 const appendPick = await vscode.window.showQuickPick(
                     existing.map(p => ({ label: p.name, description: `${p.pairs.length} pair(s)` })),
@@ -535,7 +536,7 @@ export async function promptReplacementsWithPresets(
                 if (appendPick) {
                     const { appendToPreset } = await import('../core/presets');
                     appendToPreset(appendPick.label, manual as ReplacementPair[]);
-                    vscode.window.showInformationMessage(`Appended ${manual.length} pair(s) to "${appendPick.label}".`);
+                    notifySuccess(`Appended ${manual.length} pair(s) to "${appendPick.label}".`);
                 }
             }
         }
@@ -596,7 +597,7 @@ export async function executePullSource(
 
         const sourceDir = source.path;
         if (!sourceDir || !existsSync(sourceDir)) {
-            vscode.window.showWarningMessage(`Source path not accessible: ${sourceDir || '[encrypted]'}`);
+            notifyWarn(`Source path not accessible: ${sourceDir || '[encrypted]'}`);
             return;
         }
 
@@ -609,7 +610,7 @@ export async function executePullSource(
         });
 
         if (selectedFiles.length === 0) {
-            vscode.window.showWarningMessage('No files selected.');
+            notifyWarn('No files selected.');
             return;
         }
 
@@ -632,10 +633,10 @@ export async function executePullSource(
                 const filesWithSecrets = new Set(secretFindings.map(f => f.file));
                 selectedFiles = selectedFiles.filter(f => !filesWithSecrets.has(f));
                 if (selectedFiles.length === 0) {
-                    vscode.window.showWarningMessage('All selected files contained secrets. Operation cancelled.');
+                    notifyWarn('All selected files contained secrets.');
                     return;
                 }
-                vscode.window.showInformationMessage(`Removed ${filesWithSecrets.size} file(s) with secrets. Continuing with ${selectedFiles.length} file(s).`);
+                notifyInfo(`Removed ${filesWithSecrets.size} file(s) with secrets, continuing with ${selectedFiles.length}.`);
             } else if (proceed !== 'Continue anyway') {
                 return;
             }
@@ -674,7 +675,7 @@ export async function executePullSource(
             newFiles.map(f => f.cloaked)
         );
 
-        vscode.window.showInformationMessage(`Added ${selectedFiles.length} files to "${label}"`);
+        notifySuccess(`Added ${selectedFiles.length} files to "${label}"`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Pull failed: ${(error as Error).message}`);
@@ -723,12 +724,12 @@ export async function executePullSourceGit(
 
         const sourceDir = source.path;
         if (!sourceDir || !existsSync(sourceDir)) {
-            vscode.window.showWarningMessage(`Source path not accessible: ${sourceDir || '[encrypted]'}`);
+            notifyWarn(`Source path not accessible: ${sourceDir || '[encrypted]'}`);
             return;
         }
 
         if (!isGitRepo(sourceDir)) {
-            vscode.window.showWarningMessage(`"${label}" is not a Git repository.`);
+            notifyWarn(`"${label}" is not a Git repository.`);
             return;
         }
 
@@ -753,7 +754,7 @@ export async function executePullSourceGit(
         } else if ((gitMode as any).value === 'commits') {
             const commits = await getRecentCommits(sourceDir, 15);
             if (commits.length === 0) {
-                vscode.window.showWarningMessage('No commits found.');
+                notifyWarn('No commits found.');
                 return;
             }
             const selected = await vscode.window.showQuickPick(
@@ -778,14 +779,14 @@ export async function executePullSourceGit(
         }
 
         if (gitFiles.length === 0) {
-            vscode.window.showWarningMessage('No changed files found.');
+            notifyWarn('No changed files found.');
             return;
         }
 
         // Resolve to absolute paths
         const absolutePaths = gitFiles.map(f => resolve(sourceDir, f)).filter(f => existsSync(f));
         if (absolutePaths.length === 0) {
-            vscode.window.showWarningMessage('None of the changed files exist on disk.');
+            notifyWarn('None of the changed files exist on disk.');
             return;
         }
 
@@ -801,7 +802,7 @@ export async function executePullSourceGit(
         });
 
         if (selectedFiles.length === 0) {
-            vscode.window.showWarningMessage('No files selected.');
+            notifyWarn('No files selected.');
             return;
         }
 
@@ -824,10 +825,10 @@ export async function executePullSourceGit(
                 const filesWithSecrets = new Set(secretFindings.map(f => f.file));
                 selectedFiles = selectedFiles.filter(f => !filesWithSecrets.has(f));
                 if (selectedFiles.length === 0) {
-                    vscode.window.showWarningMessage('All selected files contained secrets. Operation cancelled.');
+                    notifyWarn('All selected files contained secrets.');
                     return;
                 }
-                vscode.window.showInformationMessage(`Removed ${filesWithSecrets.size} file(s) with secrets. Continuing with ${selectedFiles.length} file(s).`);
+                notifyInfo(`Removed ${filesWithSecrets.size} file(s) with secrets, continuing with ${selectedFiles.length}.`);
             } else if (proceed !== 'Continue anyway') {
                 return;
             }
@@ -865,7 +866,7 @@ export async function executePullSourceGit(
             newFiles.map(f => f.cloaked)
         );
 
-        vscode.window.showInformationMessage(`Added ${selectedFiles.length} Git-changed files to "${label}"`);
+        notifySuccess(`Added ${selectedFiles.length} Git-changed files to "${label}"`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Git pull failed: ${(error as Error).message}`);

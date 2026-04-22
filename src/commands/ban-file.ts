@@ -14,6 +14,7 @@ import {
 } from '../core/mapper';
 import { getOrCreateSecret, hasSecret, decrypt } from '../core/crypto';
 import { addBan } from '../core/ban-list';
+import { notifyWarn } from '../core/notify';
 
 export async function executeBanFile(
     uriOrItem: vscode.Uri | { fullPath: string } | undefined,
@@ -32,7 +33,7 @@ export async function executeBanFile(
     }
 
     if (!targetUri || targetUri.scheme !== 'file') {
-        vscode.window.showWarningMessage('No file selected.');
+        notifyWarn('No file selected.');
         return;
     }
     const targetPath = targetUri.fsPath;
@@ -40,7 +41,7 @@ export async function executeBanFile(
     // Find the cloaked directory
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders) {
-        vscode.window.showWarningMessage('No workspace open.');
+        notifyWarn('No workspace open.');
         return;
     }
 
@@ -53,19 +54,19 @@ export async function executeBanFile(
     }
 
     if (!cloakedDir) {
-        vscode.window.showWarningMessage('No Repo Cloak workspace found.');
+        notifyWarn('No Repo Cloak workspace found.');
         return;
     }
 
     // Load raw mapping (fields are encrypted strings, cloaked paths are plaintext)
     const mapping = loadRawMapping(cloakedDir);
     if (!mapping) {
-        vscode.window.showWarningMessage('Could not load mapping.');
+        notifyWarn('Could not load mapping.');
         return;
     }
 
     if (!hasSecret()) {
-        vscode.window.showWarningMessage('Secret key not found. Cannot access mapping.');
+        notifyWarn('Secret key not found. Cannot access mapping.');
         return;
     }
 
@@ -96,7 +97,7 @@ export async function executeBanFile(
     }
 
     if (!foundSourceLabel || !foundOriginalRelPath || !foundCloakedRelPath) {
-        vscode.window.showWarningMessage('This file is not tracked by Repo Cloak.');
+        notifyWarn('This file is not tracked by Repo Cloak.');
         return;
     }
 
