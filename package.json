@@ -11,7 +11,7 @@
   "publisher": "ShazniShiraz",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.95.0"
   },
   "categories": [
     "Other"
@@ -119,7 +119,6 @@
         "title": "Repo Cloak: Pull Files for Source",
         "icon": "$(cloud-download)"
       },
-
       {
         "command": "repo-cloak.pullSourceGit",
         "title": "Repo Cloak: Pull from Git Changes",
@@ -210,12 +209,43 @@
       "properties": {
         "repo-cloak.forcePull.orphanPolicy": {
           "type": "string",
-          "enum": ["prompt", "delete", "keep"],
+          "enum": [
+            "prompt",
+            "delete",
+            "keep"
+          ],
           "default": "prompt",
           "description": "What to do with files that no longer exist in the source repo when running Force Pull. 'prompt' asks each time, 'delete' removes them automatically, 'keep' leaves them alone."
         }
       }
-    }
+    },
+    "chatParticipants": [
+      {
+        "id": "repo-cloak.chat",
+        "name": "repo-cloak",
+        "fullName": "Repo Cloak",
+        "description": "Cloak repos and bundle code for AI tools. Copilot only sees the cloaked workspace — never the source.",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "sources",
+            "description": "List configured sources (labels and counts only)"
+          },
+          {
+            "name": "pull",
+            "description": "Pull files from a source (you confirm in the file tree)"
+          },
+          {
+            "name": "presets",
+            "description": "List replacement presets"
+          },
+          {
+            "name": "help",
+            "description": "What can I do here?"
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -225,7 +255,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.116.0",
     "typescript": "^5.3.0"
   }
 }

@@ -17,9 +17,13 @@ import {
 } from './core/mapper';
 import { getOrCreateSecret, encryptReplacements, hasSecret } from './core/crypto';
 import { getPresets, savePreset, deletePreset, ReplacementPair } from './core/presets';
+import { registerChatParticipant } from './chat/participant';
 
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Repo Cloak');
+
+    // ─── Chat participant (@repo-cloak) ─────────────────────────────────────
+    registerChatParticipant(context);
 
     // ─── Sidebar ────────────────────────────────────────────────────────────
     const sidebarProvider = new SidebarProvider(context.extensionUri);
