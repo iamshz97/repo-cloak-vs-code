@@ -21,6 +21,7 @@ import {
 } from '../core/mapper';
 import { hasSecret, getOrCreateSecret, decryptReplacements } from '../core/crypto';
 import { addSourcePath, addDestPath, getSourcePaths } from '../core/path-cache';
+import { getPresets, savePreset, ReplacementPair } from '../core/presets';
 
 /**
  * Show recent sources first, with a "Browse…" fallback.
@@ -306,19 +307,7 @@ export async function executePull(
         }
 
         // ── Step 6: Keyword replacements ────────────────────────────────────
-        let replacements: Replacement[] = [...existingReplacements];
-
-        if (existingReplacements.length > 0) {
-            const useExisting = await vscode.window.showInformationMessage(
-                `Using ${existingReplacements.length} existing replacement(s). Add more?`,
-                'Add more', 'Continue'
-            );
-            if (useExisting === 'Add more') {
-                replacements = [...replacements, ...await promptReplacements()];
-            }
-        } else {
-            replacements = await promptReplacements();
-        }
+        let replacements: Replacement[] = await promptReplacementsWithPresets(existingReplacements);
 
         // ── Step 7: Confirm ─────────────────────────────────────────────────
         const confirm = await vscode.window.showInformationMessage(
@@ -450,6 +439,110 @@ async function promptReplacements(): Promise<Replacement[]> {
     }
 
     return replacements;
+}
+
+/**
+ * Prompt for replacements with preset support.
+ * Shows preset options first (if any exist), then manual input, with offer to save.
+ * @param existingReplacements - Replacements already in the mapping (pre-loaded).
+ */
+export async function promptReplacementsWithPresets(
+    existingReplacements: Replacement[] = []
+): Promise<Replacement[]> {
+    const presets = getPresets();
+    const hasPresets = presets.length > 0;
+
+    type ModeItem = vscode.QuickPickItem & { value: string };
+    const modeItems: ModeItem[] = [];
+
+    if (hasPresets) {
+        modeItems.push({ label: '$(list-unordered) Use a preset', description: 'Load a saved set of replacements', value: 'preset' });
+        modeItems.push({ label: '$(layers) Load preset + add more', description: 'Start from a preset, then add more pairs', value: 'hybrid' });
+    }
+    modeItems.push({ label: '$(add) Enter manually', description: 'Type replacement pairs one by one', value: 'manual' });
+    modeItems.push({ label: '$(dash) Skip', description: 'No replacements for this pull', value: 'skip' });
+
+    const base: Replacement[] = [...existingReplacements];
+
+    const modeChoice = await vscode.window.showQuickPick(modeItems, {
+        title: 'Keyword Replacements',
+        placeHolder: hasPresets ? 'Use a preset, enter manually, or skip' : 'Enter replacements or skip'
+    });
+    if (!modeChoice) { return base; }
+
+    let loaded: Replacement[] = [];
+
+    if (modeChoice.value === 'preset' || modeChoice.value === 'hybrid') {
+        const presetPick = await vscode.window.showQuickPick(
+            presets.map(p => ({ label: p.name, description: `${p.pairs.length} pair(s)`, value: p.name })),
+            { title: 'Select a preset' }
+        );
+        if (!presetPick) { return base; }
+        const chosen = presets.find(p => p.name === (presetPick as any).value);
+        if (chosen) {
+            loaded = chosen.pairs.map(p => ({ original: p.original, replacement: p.replacement }));
+            vscode.window.showInformationMessage(`Loaded preset "${chosen.name}" — ${loaded.length} pair(s)`);
+        }
+    }
+
+    let manual: Replacement[] = [];
+    if (modeChoice.value === 'manual' || modeChoice.value === 'hybrid') {
+        manual = await promptReplacements();
+    }
+
+    if (modeChoice.value === 'skip') {
+        return base;
+    }
+
+    const combined = mergeReplacements(base, loaded, manual);
+
+    // Offer to save if the user entered manual pairs
+    if (manual.length > 0) {
+        const saveChoice = await vscode.window.showInformationMessage(
+            `Save ${manual.length > 0 && loaded.length > 0 ? 'combined' : 'these'} ${combined.length - base.length} replacement(s) as a preset?`,
+            'Save as new preset', 'Append to existing preset', 'No thanks'
+        );
+        if (saveChoice === 'Save as new preset') {
+            const name = await vscode.window.showInputBox({
+                prompt: 'Preset name',
+                placeHolder: 'e.g., ACME project, Client A',
+                validateInput: v => v.trim() ? null : 'Name cannot be empty'
+            });
+            if (name?.trim()) {
+                const pairsToSave = [...loaded, ...manual] as ReplacementPair[];
+                savePreset({ name: name.trim(), pairs: pairsToSave });
+                vscode.window.showInformationMessage(`Preset "${name.trim()}" saved.`);
+            }
+        } else if (saveChoice === 'Append to existing preset') {
+            const existing = getPresets();
+            if (existing.length === 0) {
+                vscode.window.showWarningMessage('No existing presets to append to. Save as new instead.');
+            } else {
+                const appendPick = await vscode.window.showQuickPick(
+                    existing.map(p => ({ label: p.name, description: `${p.pairs.length} pair(s)` })),
+                    { title: 'Append to which preset?' }
+                );
+                if (appendPick) {
+                    const { appendToPreset } = await import('../core/presets');
+                    appendToPreset(appendPick.label, manual as ReplacementPair[]);
+                    vscode.window.showInformationMessage(`Appended ${manual.length} pair(s) to "${appendPick.label}".`);
+                }
+            }
+        }
+    }
+
+    return combined;
+}
+
+/** Merge replacement lists, deduplicating by original keyword (last wins). */
+function mergeReplacements(...lists: Replacement[][]): Replacement[] {
+    const map = new Map<string, string>();
+    for (const list of lists) {
+        for (const r of list) {
+            if (r.original) { map.set(r.original, r.replacement); }
+        }
+    }
+    return Array.from(map.entries()).map(([original, replacement]) => ({ original, replacement }));
 }
 
 /**

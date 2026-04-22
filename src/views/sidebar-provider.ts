@@ -75,6 +75,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'resolveOrphans':
                     vscode.commands.executeCommand('repo-cloak.resolveOrphans', message.label);
                     break;
+                case 'managePresets':
+                    vscode.commands.executeCommand('repo-cloak.managePresets');
+                    break;
             }
         });
 
@@ -435,7 +438,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <div class="section">
         <div class="section-header">
             <span class="section-title">Replacements</span>
-            <button class="section-action" onclick="send('addReplacement')">Add</button>
+            <div style="display:flex;gap:2px;align-items:center;">
+                <button class="icon-btn" onclick="send('managePresets')" title="Manage replacement presets"><span class="codicon codicon-bookmark"></span></button>
+                <button class="section-action" onclick="send('addReplacement')">Add</button>
+            </div>
         </div>
         ${replacementsHtml}
     </div>

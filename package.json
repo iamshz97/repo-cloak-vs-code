@@ -154,6 +154,11 @@
         "command": "repo-cloak.resolveOrphans",
         "title": "Repo Cloak: Resolve Orphaned Files",
         "icon": "$(warning)"
+      },
+      {
+        "command": "repo-cloak.managePresets",
+        "title": "Repo Cloak: Manage Replacement Presets",
+        "icon": "$(bookmark)"
       }
     ],
     "menus": {

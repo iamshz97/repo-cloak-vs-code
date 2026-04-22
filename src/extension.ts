@@ -16,6 +16,7 @@ import {
     removeSourceFromMapping, saveMapping, getSourceLabels
 } from './core/mapper';
 import { getOrCreateSecret, encryptReplacements, hasSecret } from './core/crypto';
+import { getPresets, savePreset, deletePreset, ReplacementPair } from './core/presets';
 
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Repo Cloak');
@@ -314,6 +315,135 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.resolveOrphans', (label?: string) => {
             executeResolveOrphans(label, sidebarProvider, outputChannel);
+        })
+    );
+
+    // ─── Manage replacement presets ─────────────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.managePresets', async () => {
+            const presets = getPresets();
+
+            if (presets.length === 0) {
+                const choice = await vscode.window.showInformationMessage(
+                    'No replacement presets saved yet. Create one now?',
+                    'Create preset', 'Cancel'
+                );
+                if (choice !== 'Create preset') { return; }
+
+                const name = await vscode.window.showInputBox({
+                    prompt: 'Preset name',
+                    placeHolder: 'e.g., ACME project, Client A',
+                    validateInput: v => v.trim() ? null : 'Name cannot be empty'
+                });
+                if (!name?.trim()) { return; }
+
+                const pairs: ReplacementPair[] = [];
+                while (true) {
+                    const original = await vscode.window.showInputBox({
+                        prompt: `Keyword to replace — ${pairs.length} pair(s) so far (leave empty to finish)`,
+                        placeHolder: 'e.g., Microsoft Corp'
+                    });
+                    if (!original?.trim()) { break; }
+                    const replacement = await vscode.window.showInputBox({
+                        prompt: `Replace "${original}" with:`,
+                        placeHolder: 'e.g., ACME Inc',
+                        validateInput: v => v.trim() ? null : 'Replacement cannot be empty'
+                    });
+                    if (!replacement) { break; }
+                    pairs.push({ original: original.trim(), replacement: replacement.trim() });
+                }
+                if (pairs.length === 0) {
+                    vscode.window.showWarningMessage('No pairs entered — preset not saved.');
+                    return;
+                }
+                savePreset({ name: name.trim(), pairs });
+                vscode.window.showInformationMessage(`Preset "${name.trim()}" created with ${pairs.length} pair(s).`);
+                return;
+            }
+
+            // List presets to select one to manage
+            type PresetItem = vscode.QuickPickItem & { presetName: string };
+            const items: PresetItem[] = presets.map(p => ({
+                label: p.name,
+                description: `${p.pairs.length} pair(s)`,
+                detail: p.pairs.slice(0, 3).map(r => `"${r.original}" → "${r.replacement}"`).join(', ') +
+                    (p.pairs.length > 3 ? ` …+${p.pairs.length - 3} more` : ''),
+                presetName: p.name
+            }));
+            items.push({ label: '$(add) Create new preset', description: '', presetName: '__new__' });
+
+            const pick = await vscode.window.showQuickPick(items, {
+                title: 'Replacement Presets',
+                placeHolder: 'Select a preset to edit or delete'
+            });
+            if (!pick) { return; }
+
+            if ((pick as any).presetName === '__new__') {
+                vscode.commands.executeCommand('repo-cloak.managePresets');
+                return;
+            }
+
+            const preset = presets.find(p => p.name === pick.presetName)!;
+
+            const action = await vscode.window.showQuickPick([
+                { label: '$(edit) Edit pairs', description: 'Re-enter all replacement pairs', value: 'edit' },
+                { label: '$(add) Add pairs', description: 'Append more pairs to this preset', value: 'add' },
+                { label: '$(trash) Delete preset', description: 'Permanently remove this preset', value: 'delete' }
+            ], {
+                title: `Preset: ${preset.name}`,
+                placeHolder: 'Choose an action'
+            });
+            if (!action) { return; }
+
+            if ((action as any).value === 'delete') {
+                const confirm = await vscode.window.showWarningMessage(
+                    `Delete preset "${preset.name}"? This cannot be undone.`,
+                    { modal: true },
+                    'Delete'
+                );
+                if (confirm === 'Delete') {
+                    deletePreset(preset.name);
+                    vscode.window.showInformationMessage(`Preset "${preset.name}" deleted.`);
+                }
+                return;
+            }
+
+            const existingPairs = (action as any).value === 'edit' ? [] : [...preset.pairs];
+
+            // Prompt for new/additional pairs
+            const newPairs: ReplacementPair[] = [];
+            while (true) {
+                const original = await vscode.window.showInputBox({
+                    prompt: `Keyword to replace — ${newPairs.length + existingPairs.length} pair(s) so far (leave empty to finish)`,
+                    placeHolder: 'e.g., Microsoft Corp'
+                });
+                if (!original?.trim()) { break; }
+                const replacement = await vscode.window.showInputBox({
+                    prompt: `Replace "${original}" with:`,
+                    placeHolder: 'e.g., ACME Inc',
+                    validateInput: v => v.trim() ? null : 'Replacement cannot be empty'
+                });
+                if (!replacement) { break; }
+                newPairs.push({ original: original.trim(), replacement: replacement.trim() });
+            }
+
+            const combined = (action as any).value === 'edit'
+                ? newPairs
+                : [...existingPairs, ...newPairs.filter(n => !existingPairs.some(e => e.original === n.original))];
+
+            if (combined.length === 0 && (action as any).value === 'edit') {
+                const ok = await vscode.window.showWarningMessage(
+                    'No pairs entered — preset would be empty. Save anyway (to clear all pairs)?',
+                    { modal: true },
+                    'Save empty', 'Cancel'
+                );
+                if (ok !== 'Save empty') { return; }
+            }
+
+            savePreset({ name: preset.name, pairs: combined });
+            vscode.window.showInformationMessage(
+                `Preset "${preset.name}" updated — ${combined.length} pair(s).`
+            );
         })
     );
 
