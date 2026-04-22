@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { existsSync } from 'fs';
 import { hasMapping, loadRawMapping, decryptMappingV2, MappingV2, getStaleFiles, getOriginalSourcePath } from '../core/mapper';
 import { hasSecret, getOrCreateSecret } from '../core/crypto';
+import { getAllBans, hasBanList, removeBan } from '../core/ban-list';
 
 function relativeTime(iso: string): string {
     const then = new Date(iso).getTime();
@@ -109,6 +110,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'sourceMenu':
                     await this._showSourceMenu(message.label);
+                    break;
+                case 'unbanFile':
+                    if (message.sourceLabel && message.relPath && hasSecret()) {
+                        removeBan(message.sourceLabel, message.relPath, getOrCreateSecret());
+                        this.refresh();
+                    }
                     break;
             }
         });
@@ -252,7 +259,38 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     </div>`;
             }).join('')
             : '';
-
+        // Banned files section
+        let bannedHtml = '';
+        if (hasBanList() && hasSecret()) {
+            try {
+                const secret = getOrCreateSecret();
+                const allBans = getAllBans(secret);
+                if (allBans.length > 0) {
+                    bannedHtml = allBans.map(b => {
+                        const filename = escapeHtml(b.originalRelPath.split('/').pop() || b.originalRelPath);
+                        const relPath = escapeHtml(b.originalRelPath);
+                        const srcLabel = escapeHtml(b.sourceLabel);
+                        const relPathJs = b.originalRelPath.replace(/'/g, "\\'");
+                        const srcLabelJs = b.sourceLabel.replace(/'/g, "\\'");
+                        return `
+                    <div class="list-item">
+                        <div class="list-item-content">
+                            <span class="codicon codicon-circle-slash dim" style="font-size:12px"></span>
+                            <span class="list-item-label" title="${relPath}">${filename}</span>
+                            <span class="list-item-desc">${srcLabel}</span>
+                        </div>
+                        <div class="list-item-actions">
+                            <button class="icon-btn xs" onclick="unban('${srcLabelJs}','${relPathJs}')" title="Unban \u2014 allow in future pulls">
+                                <span class="codicon codicon-debug-step-over"></span>
+                            </button>
+                        </div>
+                    </div>`;
+                    }).join('');
+                }
+            } catch {
+                // ignore
+            }
+        }
         const hasSession = !!m;
         const totalSources = m?.stats?.totalSources || m?.sources?.length || 0;
         const totalFiles = m?.stats?.totalFiles || 0;
@@ -615,6 +653,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     </div>
     ` : ''}
 
+    ${bannedHtml ? `
+    <div class="section">
+        <div class="section-header">
+            <span class="section-title">Banned</span>
+        </div>
+        ${bannedHtml}
+    </div>
+    ` : ''}
+
     <script>
         const vscode = acquireVsCodeApi();
         const NO_SPINNER = new Set(['sourceMenu', 'managePresets', 'managePrTemplates', 'prSummary', 'addSource', 'addReplacement', 'resolveOrphans']);
@@ -637,6 +684,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 }
             }
             vscode.postMessage({ command: cmd, label: label || undefined });
+        }
+        function unban(sourceLabel, relPath) {
+            vscode.postMessage({ command: 'unbanFile', sourceLabel, relPath });
         }
         function filterReplacements(query) {
             const q = (query || '').trim().toLowerCase();

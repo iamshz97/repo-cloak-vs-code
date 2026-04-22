@@ -178,6 +178,12 @@
         "command": "repo-cloak.managePrTemplates",
         "title": "Repo Cloak: Manage PR Summary Templates",
         "icon": "$(notebook-template)"
+      },
+      {
+        "command": "repo-cloak.banFile",
+        "title": "Ban from Cloak",
+        "category": "Repo Cloak",
+        "icon": "$(circle-slash)"
       }
     ],
     "menus": {
@@ -211,6 +217,20 @@
           "command": "repo-cloak.cancelFileSelection",
           "when": "view == repo-cloak.fileTree",
           "group": "navigation@6"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "repo-cloak.banFile",
+          "when": "repo-cloak.hasMapping && !explorerResourceIsFolder",
+          "group": "7_modification@99"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "repo-cloak.banFile",
+          "when": "view == repo-cloak.fileTree && viewItem == file",
+          "group": "inline"
         }
       ]
     },

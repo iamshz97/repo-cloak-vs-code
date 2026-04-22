@@ -23,6 +23,7 @@ import { hasSecret, getOrCreateSecret, decryptReplacements } from '../core/crypt
 import { addSourcePath, addDestPath, getSourcePaths } from '../core/path-cache';
 import { getPresets, savePreset, ReplacementPair } from '../core/presets';
 import { commitCloakedChange, pullSubject } from '../core/cloaked-git';
+import { getBannedSet, hasBanList } from '../core/ban-list';
 
 /**
  * Show recent sources first, with a "Browse…" fallback.
@@ -248,9 +249,20 @@ export async function executePull(
         }
 
         // ── Step 4: Show file tree for selection ────────────────────────────
+        // Build set of banned absolute paths so they are invisible in the tree
+        let bannedPaths: Set<string> | undefined;
+        if (hasBanList() && hasSecret()) {
+            const secret = getOrCreateSecret();
+            const bannedRels = getBannedSet(sourceLabel, secret);
+            if (bannedRels.size > 0) {
+                bannedPaths = new Set([...bannedRels].map(r => join(sourceDir, r)));
+            }
+        }
+
         selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
             precheck: precheck.length > 0 ? precheck : undefined,
             allowedPaths,
+            bannedPaths,
             purpose: {
                 title: `Pull → ${sourceLabel}`,
                 message: `Pick files to extract from "${sourceLabel}". Use Select All / Deselect All in the toolbar, then Confirm (✓) when ready.`

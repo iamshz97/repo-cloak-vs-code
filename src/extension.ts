@@ -19,6 +19,7 @@ import { getOrCreateSecret, encryptReplacements, hasSecret } from './core/crypto
 import { getPresets, savePreset, deletePreset, ReplacementPair } from './core/presets';
 import { executePrSummary, executeManagePrTemplates } from './commands/pr-summary';
 import { registerChatParticipant } from './chat/participant';
+import { executeBanFile } from './commands/ban-file';
 
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Repo Cloak');
@@ -474,10 +475,23 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ─── Auto-refresh ───────────────────────────────────────────────────────
     const watcher = vscode.workspace.createFileSystemWatcher('**/.repo-cloak-map.json');
-    watcher.onDidChange(() => sidebarProvider.refresh());
-    watcher.onDidCreate(() => sidebarProvider.refresh());
-    watcher.onDidDelete(() => sidebarProvider.refresh());
+    const updateHasMappingCtx = () => {
+        vscode.commands.executeCommand(
+            'setContext', 'repo-cloak.hasMapping', !!findCloakedDirectory()
+        );
+    };
+    watcher.onDidChange(() => { sidebarProvider.refresh(); updateHasMappingCtx(); });
+    watcher.onDidCreate(() => { sidebarProvider.refresh(); updateHasMappingCtx(); });
+    watcher.onDidDelete(() => { sidebarProvider.refresh(); updateHasMappingCtx(); });
     context.subscriptions.push(watcher);
+    updateHasMappingCtx(); // Set initial value on activation
+
+    // ─── Ban File ───────────────────────────────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.banFile', (uriOrItem?: vscode.Uri | { fullPath: string }) => {
+            executeBanFile(uriOrItem, sidebarProvider, outputChannel);
+        })
+    );
 
     outputChannel.appendLine('Repo Cloak extension activated');
 }

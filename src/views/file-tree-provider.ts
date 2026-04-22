@@ -46,6 +46,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     private _searchedPaths: Set<string> | null = null;
     private _searchFilter: string = '';
     private _purpose: { title: string; message?: string } | null = null;
+    private _bannedPaths: Set<string> | null = null;
 
     get checkedPaths(): Set<string> {
         return this._checkedPaths;
@@ -61,10 +62,12 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     setRoot(rootPath: string, options?: {
         allowedPaths?: Set<string>;
         precheck?: string[];
+        bannedPaths?: Set<string>;
     }): void {
         this._rootPath = rootPath;
         this._checkedPaths.clear();
         this._allowedPaths = options?.allowedPaths || null;
+        this._bannedPaths = options?.bannedPaths || null;
 
         if (options?.precheck) {
             this._precheck = new Set(options.precheck);
@@ -100,6 +103,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     startSelection(rootPath: string, options?: {
         allowedPaths?: Set<string>;
         precheck?: string[];
+        bannedPaths?: Set<string>;
         purpose?: { title: string; message?: string };
     }): Promise<string[]> {
         this.setRoot(rootPath, options);
@@ -185,6 +189,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         for (const f of allFiles) {
             if (this._allowedPaths && !this._allowedPaths.has(f.absolutePath)) { continue; }
             if (this._searchedPaths && !this._searchedPaths.has(f.absolutePath)) { continue; }
+            if (this._bannedPaths && this._bannedPaths.has(f.absolutePath)) { continue; }
             this._checkedPaths.add(f.absolutePath);
         }
         // Tick parent folders bottom-up so the UI reflects the full selection
@@ -372,6 +377,9 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
                         if (!this._searchedPaths.has(fullPath) && !this._isPathAncestorOfSearched(fullPath)) {
                             return false;
                         }
+                    }
+                    if (this._bannedPaths && !entry.isDirectory() && this._bannedPaths.has(fullPath)) {
+                        return false;
                     }
                     return true;
                 })
