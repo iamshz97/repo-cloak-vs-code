@@ -7,6 +7,7 @@ import {
 } from '../core/mapper';
 import { createAnonymizer, Replacement } from '../core/anonymizer';
 import { copyFiles } from '../core/copier';
+import { commitCloakedChange, forcePullSubject } from '../core/cloaked-git';
 import { getOrCreateSecret, hasSecret } from '../core/crypto';
 import { SidebarProvider } from '../views/sidebar-provider';
 
@@ -113,6 +114,12 @@ export async function executeForcePullAll(
             await maybeHandleOrphans(cloakedDir, mapping, label, outputChannel);
         }
 
+        await commitCloakedChange(
+            cloakedDir,
+            `repo-cloak: force-pull all (${sourceLabels.length} source${sourceLabels.length === 1 ? '' : 's'})`,
+            sourceLabels.map(l => l) // each label is a top-level directory
+        );
+
     } catch (error) {
         vscode.window.showErrorMessage(`Force Pull failed: ${(error as Error).message}`);
     } finally {
@@ -204,6 +211,12 @@ export async function executeForcePullSource(
         vscode.window.showInformationMessage(`Updated ${validFiles.length} files for "${label}"`);
 
         await maybeHandleOrphans(cloakedDir, mapping, label, outputChannel);
+
+        await commitCloakedChange(
+            cloakedDir,
+            forcePullSubject(label, validFiles.length),
+            [label] // the per-source subdirectory
+        );
 
     } catch (error) {
         vscode.window.showErrorMessage(`Force Pull failed: ${(error as Error).message}`);

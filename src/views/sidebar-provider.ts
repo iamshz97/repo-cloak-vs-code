@@ -78,6 +78,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'managePresets':
                     vscode.commands.executeCommand('repo-cloak.managePresets');
                     break;
+                case 'prSummary':
+                    vscode.commands.executeCommand('repo-cloak.prSummary');
+                    break;
+                case 'managePrTemplates':
+                    vscode.commands.executeCommand('repo-cloak.managePrTemplates');
+                    break;
                 case 'sourceMenu':
                     await this._showSourceMenu(message.label);
                     break;
@@ -458,6 +464,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         ${hasSession ? `
         <button class="action-btn ai-action" onclick="send('copyForAI')" title="Bundle files & copy to clipboard for AI tools">
             <span class="codicon codicon-sparkle"></span> AI
+        </button>
+        <button class="action-btn ai-action" onclick="send('prSummary')" title="Draft a PR summary using Copilot">
+            <span class="codicon codicon-git-pull-request"></span> PR
         </button>` : ''}
     </div>
 
@@ -503,7 +512,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     <script>
         const vscode = acquireVsCodeApi();
-        const NO_SPINNER = new Set(['sourceMenu', 'managePresets', 'addSource', 'addReplacement', 'resolveOrphans']);
+        const NO_SPINNER = new Set(['sourceMenu', 'managePresets', 'managePrTemplates', 'prSummary', 'addSource', 'addReplacement', 'resolveOrphans']);
         function send(cmd, label, btn) {
             if (btn && !NO_SPINNER.has(cmd)) {
                 const icon = btn.querySelector('.codicon');

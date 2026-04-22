@@ -9,6 +9,7 @@ import { resolve, join } from 'path';
 import { SidebarProvider } from '../views/sidebar-provider';
 import { createDeanonymizer } from '../core/anonymizer';
 import { copyFiles } from '../core/copier';
+import { commitCloakedChange, pushSubject, forcePushSubject } from '../core/cloaked-git';
 import { getAllFiles } from '../core/scanner';
 import {
     hasMapping, loadMapping, decryptMappingV2, MappingV2,
@@ -215,6 +216,14 @@ export async function executePush(
         sidebarProvider.refresh();
         vscode.window.showInformationMessage(`Restored "${targetLabel}" to ${destDir}`);
 
+        // Audit-trail commit (cloaked files unchanged — record the push as an event)
+        await commitCloakedChange(
+            cloakedDir!,
+            pushSubject(targetLabel, 0),
+            [],
+            { allowEmpty: true }
+        );
+
     } catch (error) {
         vscode.window.showErrorMessage(`Push failed: ${(error as Error).message}`);
     }
@@ -319,6 +328,13 @@ export async function executePushAll(
         sidebarProvider.refresh();
         vscode.window.showInformationMessage(`All ${sourceLabels.length} sources restored`);
 
+        await commitCloakedChange(
+            cloakedDir!,
+            `repo-cloak: push all (${sourceLabels.length} source${sourceLabels.length === 1 ? '' : 's'})`,
+            [],
+            { allowEmpty: true }
+        );
+
     } catch (error) {
         vscode.window.showErrorMessage(`Push All failed: ${(error as Error).message}`);
     }
@@ -404,6 +420,13 @@ export async function executeForcePushSource(
         );
 
         vscode.window.showInformationMessage(`Force Pushed "${label}" successfully.`);
+
+        await commitCloakedChange(
+            cloakedDir,
+            forcePushSubject(label, 0),
+            [],
+            { allowEmpty: true }
+        );
     } catch (error) {
         vscode.window.showErrorMessage(`Force Push failed: ${(error as Error).message}`);
     } finally {

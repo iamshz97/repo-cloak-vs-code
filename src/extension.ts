@@ -17,10 +17,19 @@ import {
 } from './core/mapper';
 import { getOrCreateSecret, encryptReplacements, hasSecret } from './core/crypto';
 import { getPresets, savePreset, deletePreset, ReplacementPair } from './core/presets';
+import { executePrSummary, executeManagePrTemplates } from './commands/pr-summary';
 import { registerChatParticipant } from './chat/participant';
 
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Repo Cloak');
+
+    // ─── PR Summary ─────────────────────────────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.prSummary', () => executePrSummary())
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.managePrTemplates', () => executeManagePrTemplates())
+    );
 
     // ─── Chat participant (@repo-cloak) ─────────────────────────────────────
     registerChatParticipant(context);

@@ -22,6 +22,7 @@ import {
 import { hasSecret, getOrCreateSecret, decryptReplacements } from '../core/crypto';
 import { addSourcePath, addDestPath, getSourcePaths } from '../core/path-cache';
 import { getPresets, savePreset, ReplacementPair } from '../core/presets';
+import { commitCloakedChange, pullSubject } from '../core/cloaked-git';
 
 /**
  * Show recent sources first, with a "Browse…" fallback.
@@ -406,7 +407,12 @@ export async function executePull(
         }
 
         saveMapping(destDir!, mapping);
-
+        // Auto-commit in the cloaked workspace's git history
+        await commitCloakedChange(
+            destDir!,
+            pullSubject(sourceLabel, newFiles.length),
+            newFiles.map(f => f.cloaked)
+        );
         // ── Done! ───────────────────────────────────────────────────────────
         sidebarProvider.refresh();
         vscode.window.showInformationMessage(`Extracted ${selectedFiles.length} files from "${sourceLabel}"`);
@@ -662,6 +668,12 @@ export async function executePullSource(
         const updatedMapping = mergeFilesIntoSource(rawMapping, label, newFiles);
         saveMapping(cloakedDir, updatedMapping);
 
+        await commitCloakedChange(
+            cloakedDir,
+            pullSubject(label, newFiles.length),
+            newFiles.map(f => f.cloaked)
+        );
+
         vscode.window.showInformationMessage(`Added ${selectedFiles.length} files to "${label}"`);
 
     } catch (error) {
@@ -846,6 +858,12 @@ export async function executePullSourceGit(
         });
         const updatedMapping = mergeFilesIntoSource(rawMapping, label, newFiles);
         saveMapping(cloakedDir, updatedMapping);
+
+        await commitCloakedChange(
+            cloakedDir,
+            pullSubject(label, newFiles.length),
+            newFiles.map(f => f.cloaked)
+        );
 
         vscode.window.showInformationMessage(`Added ${selectedFiles.length} Git-changed files to "${label}"`);
 

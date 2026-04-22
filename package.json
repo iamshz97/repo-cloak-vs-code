@@ -168,6 +168,16 @@
         "command": "repo-cloak.managePresets",
         "title": "Repo Cloak: Manage Replacement Presets",
         "icon": "$(bookmark)"
+      },
+      {
+        "command": "repo-cloak.prSummary",
+        "title": "Repo Cloak: Generate PR Summary",
+        "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "repo-cloak.managePrTemplates",
+        "title": "Repo Cloak: Manage PR Summary Templates",
+        "icon": "$(notebook-template)"
       }
     ],
     "menus": {
@@ -216,6 +226,21 @@
           ],
           "default": "prompt",
           "description": "What to do with files that no longer exist in the source repo when running Force Pull. 'prompt' asks each time, 'delete' removes them automatically, 'keep' leaves them alone."
+        },
+        "repo-cloak.git": {
+          "type": "string",
+          "enum": [
+            "full",
+            "commit-only",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Initialize the cloaked workspace as a git repo (if needed) and auto-commit every pull/push.",
+            "Auto-commit every pull/push, but only if the cloaked workspace is already a git repo.",
+            "Never touch git in the cloaked workspace."
+          ],
+          "default": "full",
+          "description": "Controls whether Repo Cloak treats the cloaked workspace as a git repo and records each pull/push as a commit."
         }
       }
     },
@@ -238,6 +263,10 @@
           {
             "name": "presets",
             "description": "List replacement presets"
+          },
+          {
+            "name": "pr-summary",
+            "description": "Draft a PR summary from the cloaked workspace's diff"
           },
           {
             "name": "help",

@@ -131,10 +131,24 @@ function handleHelp(stream: vscode.ChatResponseStream): void {
         '- `/sources` — list configured sources (labels + counts only)\n' +
         '- `/pull [source]` — start a pull (you pick files in the tree)\n' +
         '- `/presets` — list replacement presets\n' +
+        '- `/pr-summary` — draft a PR description from the cloaked workspace diff\n' +
         '- `/help` — show this message\n\n' +
         '**Privacy guarantee:** I never read files from your source repos. ' +
         'Anything Copilot sees from a source goes through your confirmation and the anonymizer first.'
     );
+}
+
+async function handlePrSummary(
+    _request: vscode.ChatRequest,
+    stream: vscode.ChatResponseStream
+): Promise<void> {
+    const dir = ensureCloaked(stream); if (!dir) { return; }
+    stream.markdown(
+        'Drafting a PR summary uses your cloaked workspace diff (never the source repo) ' +
+        'and the Copilot model you select. Click below to start:'
+    );
+    stream.button({ command: 'repo-cloak.prSummary', title: '$(git-pull-request) Generate PR summary' });
+    stream.button({ command: 'repo-cloak.managePrTemplates', title: '$(notebook-template) Manage templates' });
 }
 
 // ─── Participant ────────────────────────────────────────────────────────────
@@ -143,10 +157,11 @@ export function registerChatParticipant(context: vscode.ExtensionContext): void 
     const handler: vscode.ChatRequestHandler = async (request, _ctx, stream, _token): Promise<ResultMeta> => {
         try {
             switch (request.command) {
-                case 'sources':  await handleSources(request, stream); return { command: 'sources' };
-                case 'pull':     await handlePull(request, stream);    return { command: 'pull' };
-                case 'presets':  await handlePresets(request, stream); return { command: 'presets' };
-                case 'help':     handleHelp(stream);                   return { command: 'help' };
+                case 'sources':    await handleSources(request, stream);   return { command: 'sources' };
+                case 'pull':       await handlePull(request, stream);      return { command: 'pull' };
+                case 'presets':    await handlePresets(request, stream);   return { command: 'presets' };
+                case 'pr-summary': await handlePrSummary(request, stream); return { command: 'pr-summary' };
+                case 'help':       handleHelp(stream);                     return { command: 'help' };
                 default:
                     handleHelp(stream);
                     return {};
