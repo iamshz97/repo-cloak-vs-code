@@ -271,11 +271,9 @@ export async function executePull(
         });
 
         if (selectedFiles.length === 0) {
-            vscode.window.showWarningMessage('No files selected. Operation cancelled.');
+            notifyWarn('No files selected.');
             return;
         }
-
-        vscode.window.showInformationMessage(`Selected ${selectedFiles.length} files`);
 
         // ── Step 5: Secret scan ─────────────────────────────────────────────
         const secretFindings = await vscode.window.withProgress(
@@ -314,12 +312,11 @@ export async function executePull(
                 const filesWithSecrets = new Set(secretFindings.map(f => f.file));
                 selectedFiles = selectedFiles.filter(f => !filesWithSecrets.has(f));
                 if (selectedFiles.length === 0) {
-                    vscode.window.showWarningMessage('All selected files contained secrets. Operation cancelled.');
+                    notifyWarn('All selected files contained secrets.');
                     return;
                 }
-                vscode.window.showInformationMessage(`Removed ${filesWithSecrets.size} file(s) with secrets. Continuing with ${selectedFiles.length} file(s).`);
+                notifyInfo(`Removed ${filesWithSecrets.size} file(s) with secrets, continuing with ${selectedFiles.length}.`);
             } else if (proceed !== 'Continue anyway') {
-                vscode.window.showInformationMessage('Operation cancelled.');
                 return;
             }
         }

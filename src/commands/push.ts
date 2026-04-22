@@ -16,6 +16,7 @@ import {
     getSourceLabels, getSourceByLabel
 } from '../core/mapper';
 import { hasSecret, getOrCreateSecret } from '../core/crypto';
+import { notifySuccess, notifyWarn } from '../core/notify';
 
 /**
  * Push a single source or let user pick which source to push
@@ -52,7 +53,7 @@ export async function executePush(
             try {
                 mapping = decryptMappingV2(mapping, getOrCreateSecret());
             } catch {
-                vscode.window.showWarningMessage('Could not decrypt mapping with current secret key.');
+                notifyWarn('Could not decrypt mapping with current secret key.');
             }
         }
 
@@ -133,7 +134,7 @@ export async function executePush(
             }
         } else {
             if (source.path) {
-                vscode.window.showWarningMessage(`Original path no longer exists: ${source.path}`);
+                notifyWarn(`Original path no longer exists: ${source.path}`);
             }
             const uris = await vscode.window.showOpenDialog({
                 canSelectFiles: false,
@@ -181,7 +182,7 @@ export async function executePush(
                 const files = getAllFiles(sourceSubdir).filter(f => f.name !== 'AGENTS.md');
 
                 if (files.length === 0) {
-                    vscode.window.showWarningMessage('No files found in the cloaked directory.');
+                    notifyWarn('No files found in the cloaked directory.');
                     return;
                 }
 
@@ -214,7 +215,7 @@ export async function executePush(
         );
 
         sidebarProvider.refresh();
-        vscode.window.showInformationMessage(`Restored "${targetLabel}" to ${destDir}`);
+        notifySuccess(`Restored "${targetLabel}" to ${destDir}`);
 
         // Audit-trail commit (cloaked files unchanged — record the push as an event)
         await commitCloakedChange(
@@ -249,14 +250,14 @@ export async function executePushAll(
             try {
                 mapping = decryptMappingV2(mapping, getOrCreateSecret());
             } catch {
-                vscode.window.showWarningMessage('Could not decrypt mapping.');
+                notifyWarn('Could not decrypt mapping.');
                 return;
             }
         }
 
         const sourceLabels = getSourceLabels(mapping);
         if (sourceLabels.length === 0) {
-            vscode.window.showWarningMessage('No sources found.');
+            notifyWarn('No sources found.');
             return;
         }
 
@@ -326,7 +327,7 @@ export async function executePushAll(
         );
 
         sidebarProvider.refresh();
-        vscode.window.showInformationMessage(`All ${sourceLabels.length} sources restored`);
+        notifySuccess(`All ${sourceLabels.length} sources restored`);
 
         await commitCloakedChange(
             cloakedDir!,
@@ -360,7 +361,7 @@ export async function executeForcePushSource(
             try {
                 mapping = decryptMappingV2(mapping, getOrCreateSecret());
             } catch {
-                vscode.window.showWarningMessage('Could not decrypt mapping for force push.');
+                notifyWarn('Could not decrypt mapping for force push.');
                 return;
             }
         }
@@ -399,7 +400,7 @@ export async function executeForcePushSource(
                 const files = getAllFiles(sourceSubdir).filter(f => f.name !== 'AGENTS.md');
 
                 if (files.length === 0) {
-                    vscode.window.showWarningMessage(`No files found in "${label}" to restore.`);
+                    notifyWarn(`No files found in "${label}" to restore.`);
                     return;
                 }
 
@@ -419,7 +420,7 @@ export async function executeForcePushSource(
             }
         );
 
-        vscode.window.showInformationMessage(`Force Pushed "${label}" successfully.`);
+        notifySuccess(`Force Pushed "${label}" successfully.`);
 
         await commitCloakedChange(
             cloakedDir,

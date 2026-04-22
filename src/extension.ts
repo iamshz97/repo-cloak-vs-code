@@ -20,6 +20,7 @@ import { getPresets, savePreset, deletePreset, ReplacementPair } from './core/pr
 import { executePrSummary, executeManagePrTemplates } from './commands/pr-summary';
 import { registerChatParticipant } from './chat/participant';
 import { executeBanFile } from './commands/ban-file';
+import { notifySuccess, notifyWarn } from './core/notify';
 
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Repo Cloak');
@@ -164,7 +165,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             mapping = removeSourceFromMapping(mapping, label);
             saveMapping(cloakedDir, mapping);
-            vscode.window.showInformationMessage(`Removed source "${label}"`);
+            notifySuccess(`Removed source "${label}"`);
             } finally { sidebarProvider.refresh(); }
         })
     );
@@ -208,7 +209,7 @@ export function activate(context: vscode.ExtensionContext) {
             };
 
             saveMapping(cloakedDir, mapping);
-            vscode.window.showInformationMessage(`Added replacement: "${original}" \u2192 "${replacement}"`);
+            notifySuccess(`Added replacement: "${original}" → "${replacement}"`);
             } finally { sidebarProvider.refresh(); }
         })
     );
@@ -281,7 +282,7 @@ export function activate(context: vscode.ExtensionContext) {
                     replacementsCount: mapping.replacements.length
                 };
                 saveMapping(cloakedDir, mapping);
-                vscode.window.showInformationMessage(`Removed replacement for "${original}"`);
+                notifySuccess(`Removed replacement for "${original}"`);
             }
             } finally { sidebarProvider.refresh(); }
         })
@@ -379,11 +380,11 @@ export function activate(context: vscode.ExtensionContext) {
                     pairs.push({ original: original.trim(), replacement: replacement.trim() });
                 }
                 if (pairs.length === 0) {
-                    vscode.window.showWarningMessage('No pairs entered — preset not saved.');
+                    notifyWarn('No pairs entered — preset not saved.');
                     return;
                 }
                 savePreset({ name: name.trim(), pairs });
-                vscode.window.showInformationMessage(`Preset "${name.trim()}" created with ${pairs.length} pair(s).`);
+                notifySuccess(`Preset "${name.trim()}" created with ${pairs.length} pair(s).`);
                 return;
             }
 
@@ -429,7 +430,7 @@ export function activate(context: vscode.ExtensionContext) {
                 );
                 if (confirm === 'Delete') {
                     deletePreset(preset.name);
-                    vscode.window.showInformationMessage(`Preset "${preset.name}" deleted.`);
+                    notifySuccess(`Preset "${preset.name}" deleted.`);
                 }
                 return;
             }
@@ -467,7 +468,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             savePreset({ name: preset.name, pairs: combined });
-            vscode.window.showInformationMessage(
+            notifySuccess(
                 `Preset "${preset.name}" updated — ${combined.length} pair(s).`
             );
         })

@@ -10,6 +10,7 @@ import { copyFiles } from '../core/copier';
 import { commitCloakedChange, forcePullSubject } from '../core/cloaked-git';
 import { getOrCreateSecret, hasSecret } from '../core/crypto';
 import { SidebarProvider } from '../views/sidebar-provider';
+import { notifySuccess, notifyWarn } from '../core/notify';
 
 function findCloakedDirectory(): string | null {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -44,14 +45,14 @@ export async function executeForcePullAll(
             try {
                 mapping = decryptMappingV2(mapping, getOrCreateSecret());
             } catch {
-                vscode.window.showWarningMessage('Could not decrypt mapping for force pull. Ensure secret is entered.');
+                notifyWarn('Could not decrypt mapping for force pull. Ensure secret is entered.');
                 return;
             }
         }
 
         const sourceLabels = getSourceLabels(mapping);
         if (sourceLabels.length === 0) {
-            vscode.window.showWarningMessage('No sources found to update.');
+            notifyWarn('No sources found to update.');
             return;
         }
 
@@ -108,7 +109,7 @@ export async function executeForcePullAll(
             }
         );
 
-        vscode.window.showInformationMessage(`Force Pull complete for all sources.`);
+        notifySuccess(`Force Pull complete for all sources.`);
 
         for (const label of sourceLabels) {
             await maybeHandleOrphans(cloakedDir, mapping, label, outputChannel);
@@ -147,14 +148,14 @@ export async function executeForcePullSource(
             try {
                 mapping = decryptMappingV2(mapping, getOrCreateSecret());
             } catch {
-                vscode.window.showWarningMessage('Could not decrypt mapping.');
+                notifyWarn('Could not decrypt mapping.');
                 return;
             }
         }
 
         const source = getSourceByLabel(mapping, label);
         if (!source || !source.path || !existsSync(source.path)) {
-            vscode.window.showWarningMessage(`Original path not found or not accessible for "${label}".`);
+            notifyWarn(`Original path not found or not accessible for "${label}".`);
             return;
         }
 
@@ -168,7 +169,7 @@ export async function executeForcePullSource(
             .filter(f => existsSync(f));
 
         if (validFiles.length === 0) {
-            vscode.window.showWarningMessage(`No previously mapped files currently exist in "${label}".`);
+            notifyWarn(`No previously mapped files currently exist in "${label}".`);
             return;
         }
 
@@ -208,7 +209,7 @@ export async function executeForcePullSource(
             }
         );
 
-        vscode.window.showInformationMessage(`Updated ${validFiles.length} files for "${label}"`);
+        notifySuccess(`Updated ${validFiles.length} files for "${label}"`);
 
         await maybeHandleOrphans(cloakedDir, mapping, label, outputChannel);
 
@@ -287,7 +288,7 @@ async function maybeHandleOrphans(
             saveMapping(cloakedDir, updated);
         }
         outputChannel.appendLine(`[orphan] "${label}" — removed ${removed.length} orphaned file(s).`);
-        vscode.window.showInformationMessage(`Removed ${removed.length} orphaned file(s) from "${label}".`);
+        notifySuccess(`Removed ${removed.length} orphaned file(s) from "${label}".`);
     }
 }
 

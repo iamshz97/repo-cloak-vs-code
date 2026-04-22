@@ -16,6 +16,7 @@ import {
 import { hasSecret, getOrCreateSecret } from '../core/crypto';
 import { createDeanonymizer, Replacement } from '../core/anonymizer';
 import { copyFileWithTransform } from '../core/copier';
+import { notifySuccess, notifyInfo } from '../core/notify';
 
 export async function executeResolveOrphans(
     initialLabel: string | undefined,
@@ -45,7 +46,7 @@ export async function executeResolveOrphans(
         if (!label) {
             const labels = getSourceLabels(mapping).filter(l => getStaleFiles(mapping, l).length > 0);
             if (labels.length === 0) {
-                vscode.window.showInformationMessage('No orphaned files detected — everything is in sync.');
+                notifyInfo('No orphaned files detected — everything is in sync.');
                 return;
             }
             if (labels.length === 1) {
@@ -62,7 +63,7 @@ export async function executeResolveOrphans(
 
         const stale = getStaleFiles(mapping, label);
         if (stale.length === 0) {
-            vscode.window.showInformationMessage(`No orphaned files in "${label}".`);
+            notifyInfo(`No orphaned files in "${label}".`);
             return;
         }
 
@@ -112,7 +113,7 @@ export async function executeResolveOrphans(
             }
             const updated = removeFilesFromSource(mapping, label, removed);
             saveMapping(cloakedDir, updated);
-            vscode.window.showInformationMessage(`Removed ${removed.length} orphan(s) from "${label}".`);
+            notifySuccess(`Removed ${removed.length} orphan(s) from "${label}".`);
 
         } else if ((action as any).value === 'push') {
             if (!source.path || !existsSync(source.path)) {
@@ -132,7 +133,7 @@ export async function executeResolveOrphans(
                     outputChannel.appendLine(`[orphan] Failed to push ${item.stale.original}: ${(err as Error).message}`);
                 }
             }
-            vscode.window.showInformationMessage(`Pushed ${pushed} file(s) back to source.`);
+            notifySuccess(`Pushed ${pushed} file(s) back to source.`);
         }
 
     } catch (error) {

@@ -18,6 +18,7 @@ import {
     getTemplates, getTemplateByName, saveTemplate, deleteTemplate,
     getActiveTemplateName, setActiveTemplateName, DEFAULT_TEMPLATE, PrTemplate
 } from '../core/pr-templates';
+import { notifySuccess, notifyWarn } from '../core/notify';
 
 const execAsync = promisify(exec);
 const MAX_DIFF_CHARS = 60_000; // keep prompt within reasonable LM context
@@ -94,7 +95,7 @@ async function pickDiffScope(cwd: string): Promise<{ diff: string; scopeLabel: s
     }
 
     if (!diff || diff.trim() === '') {
-        vscode.window.showWarningMessage('No diff found for that scope.');
+        notifyWarn('No diff found for that scope.');
         return null;
     }
 
@@ -221,7 +222,7 @@ export async function executePrSummary(): Promise<void> {
     }
 
     if (!result.trim()) {
-        vscode.window.showWarningMessage('Copilot returned an empty response.');
+        notifyWarn('Copilot returned an empty response.');
         return;
     }
 
@@ -338,7 +339,7 @@ async function createTemplateFlow(): Promise<void> {
     if (body === undefined) { return; }
 
     saveTemplate({ name: name.trim(), body });
-    vscode.window.showInformationMessage(`Saved template "${name.trim()}".`);
+    notifySuccess(`Saved template "${name.trim()}".`);
 }
 
 /** Open an editor with the body, then read it back when the user closes/saves it. */

@@ -22,6 +22,7 @@ import {
     getFilesChangedInCommits, getCommitDiff, getFileAtCommit
 } from '../core/git';
 import { buildBundle, BundleFile, BundleType, describeBundleType } from '../core/bundle';
+import { notifySuccess, notifyWarn, notifyInfo } from '../core/notify';
 
 const SIZE_WARN_BYTES = 500 * 1024;
 
@@ -59,7 +60,7 @@ export async function executeCopyForAI(
         // ── Pick source ─────────────────────────────────────────────────────
         const labels = getSourceLabels(mapping);
         if (labels.length === 0) {
-            vscode.window.showWarningMessage('No sources available.');
+            notifyWarn('No sources available.');
             return;
         }
 
@@ -129,7 +130,7 @@ export async function executeCopyForAI(
                 }
             });
             if (picked.length === 0) {
-                vscode.window.showInformationMessage('No files selected.');
+                notifyInfo('No files selected.');
                 return;
             }
             const files = readFilesAsBundle(picked, cloakedSubdir, /*anonymize*/ null, replacements, /*anonymizePathFn*/ false);
@@ -144,7 +145,7 @@ export async function executeCopyForAI(
                 }
             });
             if (picked.length === 0) {
-                vscode.window.showInformationMessage('No files selected.');
+                notifyInfo('No files selected.');
                 return;
             }
             const findings = await scanIfNeeded(picked, outputChannel);
@@ -161,7 +162,7 @@ export async function executeCopyForAI(
             );
             const candidates = changed.map(f => resolve(sourceDir, f)).filter(existsSync);
             if (candidates.length === 0) {
-                vscode.window.showWarningMessage('No uncommitted files found.');
+                notifyWarn('No uncommitted files found.');
                 return;
             }
             const picked = await fileTreeProvider.startSelection(sourceDir, {
@@ -183,7 +184,7 @@ export async function executeCopyForAI(
         } else if (mode.value === 'commits') {
             const commits = await getRecentCommits(sourceDir, 30);
             if (commits.length === 0) {
-                vscode.window.showWarningMessage('No commits found.');
+                notifyWarn('No commits found.');
                 return;
             }
             const picked = await vscode.window.showQuickPick(
@@ -195,7 +196,7 @@ export async function executeCopyForAI(
             const changed = await getFilesChangedInCommits(sourceDir, hashes);
             const candidates = changed.map(f => resolve(sourceDir, f)).filter(existsSync);
             if (candidates.length === 0) {
-                vscode.window.showWarningMessage('No surviving files in those commits.');
+                notifyWarn('No surviving files in those commits.');
                 return;
             }
             const refined = await fileTreeProvider.startSelection(sourceDir, {
@@ -218,7 +219,7 @@ export async function executeCopyForAI(
         } else if (mode.value === 'commit-diff') {
             const commits = await getRecentCommits(sourceDir, 50);
             if (commits.length === 0) {
-                vscode.window.showWarningMessage('No commits found.');
+                notifyWarn('No commits found.');
                 return;
             }
             const picked = await vscode.window.showQuickPick(
@@ -258,7 +259,7 @@ export async function executeCopyForAI(
             );
 
             if (!rawDiff.trim()) {
-                vscode.window.showWarningMessage('Empty diff.');
+                notifyWarn('Empty diff.');
                 return;
             }
             const findings = scanStringForSecretsLite(rawDiff);
@@ -391,7 +392,7 @@ async function maybeStripSecrets(
         const bad = new Set(findings.map(f => f.file));
         const remaining = files.filter(f => !bad.has(f));
         if (remaining.length === 0) {
-            vscode.window.showWarningMessage('All selected files contained secrets.');
+            notifyWarn('All selected files contained secrets.');
             return null;
         }
         return remaining;
