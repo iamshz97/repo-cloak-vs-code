@@ -243,21 +243,27 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             }).join('')
             : '<p class="empty">No replacements</p>';
 
-        // Recent activity feed (from pullHistory)
-        const recent = (m?.pullHistory || []).slice(-6).reverse();
-        const historyHtml = recent.length > 0
-            ? recent.map(h => {
-                const when = relativeTime(h.timestamp);
-                const label = escapeHtml(h.sourceLabel);
-                const added = h.filesAdded > 0 ? `+${h.filesAdded}` : '±0';
-                return `
-                    <div class="history-row" title="${when} — ${label} (${added} file${h.filesAdded === 1 ? '' : 's'})">
+        // Recent activity feed (from pullHistory) — cap at 30 most recent
+        const COLLAPSE_THRESHOLD = 5;
+        const recent = (m?.pullHistory || []).slice(-30).reverse();
+        const historyRows = recent.map((h, i) => {
+            const when = relativeTime(h.timestamp);
+            const label = escapeHtml(h.sourceLabel);
+            const added = h.filesAdded > 0 ? `+${h.filesAdded}` : '±0';
+            const hidden = i >= COLLAPSE_THRESHOLD ? ' collapsible-extra' : '';
+            return `
+                    <div class="history-row${hidden}" title="${when} — ${label} (${added} file${h.filesAdded === 1 ? '' : 's'})">
                         <span class="codicon codicon-arrow-down history-icon"></span>
                         <span class="history-label">${label}</span>
                         <span class="history-delta">${added}</span>
                         <span class="history-when">${when}</span>
                     </div>`;
-            }).join('')
+        }).join('');
+        const historyToggle = recent.length > COLLAPSE_THRESHOLD
+            ? `<button class="toggle-more" data-toggle="history" onclick="toggleSection(this,'history',${recent.length - COLLAPSE_THRESHOLD})">Show ${recent.length - COLLAPSE_THRESHOLD} more</button>`
+            : '';
+        const historyHtml = recent.length > 0
+            ? `<div class="collapsible" data-section="history" data-collapsed="true">${historyRows}</div>${historyToggle}`
             : '';
         // Banned files section
         let bannedHtml = '';
@@ -266,14 +272,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 const secret = getOrCreateSecret();
                 const allBans = getAllBans(secret);
                 if (allBans.length > 0) {
-                    bannedHtml = allBans.map(b => {
+                    const banRows = allBans.map((b, i) => {
                         const filename = escapeHtml(b.originalRelPath.split('/').pop() || b.originalRelPath);
                         const relPath = escapeHtml(b.originalRelPath);
                         const srcLabel = escapeHtml(b.sourceLabel);
                         const relPathJs = b.originalRelPath.replace(/'/g, "\\'");
                         const srcLabelJs = b.sourceLabel.replace(/'/g, "\\'");
+                        const hidden = i >= COLLAPSE_THRESHOLD ? ' collapsible-extra' : '';
                         return `
-                    <div class="list-item">
+                    <div class="list-item${hidden}">
                         <div class="list-item-content">
                             <span class="codicon codicon-circle-slash dim" style="font-size:12px"></span>
                             <span class="list-item-label" title="${relPath}">${filename}</span>
@@ -286,6 +293,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                         </div>
                     </div>`;
                     }).join('');
+                    const banToggle = allBans.length > COLLAPSE_THRESHOLD
+                        ? `<button class="toggle-more" data-toggle="banned" onclick="toggleSection(this,'banned',${allBans.length - COLLAPSE_THRESHOLD})">Show ${allBans.length - COLLAPSE_THRESHOLD} more</button>`
+                        : '';
+                    bannedHtml = `<div class="collapsible" data-section="banned" data-collapsed="true">${banRows}</div>${banToggle}`;
                 }
             } catch {
                 // ignore
@@ -582,6 +593,28 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         flex-shrink: 0;
     }
 
+    /* ── Collapsible sections ── */
+    .collapsible[data-collapsed="true"] .collapsible-extra { display: none; }
+    .toggle-more {
+        display: block;
+        width: 100%;
+        margin-top: 4px;
+        padding: 3px 6px;
+        background: transparent;
+        color: var(--vscode-textLink-foreground);
+        border: none;
+        border-radius: var(--item-radius);
+        cursor: pointer;
+        font: inherit;
+        font-size: 11px;
+        text-align: left;
+        opacity: 0.85;
+    }
+    .toggle-more:hover {
+        background: var(--vscode-list-hoverBackground);
+        opacity: 1;
+    }
+
     @keyframes spin {
         100% { transform: rotate(360deg); }
     }
@@ -694,6 +727,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 const key = el.getAttribute('data-filter') || '';
                 el.classList.toggle('filtered-out', q !== '' && !key.includes(q));
             });
+        }
+        function toggleSection(btn, section, hiddenCount) {
+            const wrap = document.querySelector('.collapsible[data-section="' + section + '"]');
+            if (!wrap) { return; }
+            const collapsed = wrap.getAttribute('data-collapsed') === 'true';
+            wrap.setAttribute('data-collapsed', collapsed ? 'false' : 'true');
+            btn.textContent = collapsed ? 'Show less' : 'Show ' + hiddenCount + ' more';
         }
     </script>
 </body>
