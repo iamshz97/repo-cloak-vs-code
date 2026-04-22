@@ -462,11 +462,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             <span class="codicon codicon-cloud-upload"></span> Push
         </button>
         ${hasSession ? `
-        <button class="action-btn ai-action" onclick="send('copyForAI')" title="Bundle files & copy to clipboard for AI tools">
-            <span class="codicon codicon-sparkle"></span> AI
-        </button>
-        <button class="action-btn ai-action" onclick="send('prSummary')" title="Draft a PR summary using Copilot">
-            <span class="codicon codicon-git-pull-request"></span> PR
+        <button class="action-btn ai-action" onclick="send('copyForAI')" title="Bundle files, anonymize, and copy to clipboard for AI tools">
+            <span class="codicon codicon-sparkle"></span> Export
         </button>` : ''}
     </div>
 
