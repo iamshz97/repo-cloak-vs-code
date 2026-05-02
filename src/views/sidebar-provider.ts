@@ -356,6 +356,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         background: var(--vscode-toolbar-hoverBackground);
         border-color: var(--vscode-focusBorder);
     }
+    .action-btn:disabled {
+        opacity: 0.38;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
 
     /* ── Status ─── */
     .status-bar {
@@ -632,16 +637,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
     <div class="action-bar">
-        <button class="action-btn" onclick="send('pullAction')">
+        <button class="action-btn" onclick="send('pullAction')" title="Pull files from a source repository">
             <span class="codicon codicon-cloud-download"></span> Pull
         </button>
-        <button class="action-btn" onclick="send('pushAction')">
+        <button class="action-btn" onclick="send('pushAction')" title="Push changes back to source" ${!hasSession ? 'disabled' : ''}>
             <span class="codicon codicon-cloud-upload"></span> Push
         </button>
-        ${hasSession ? `
-        <button class="action-btn ai-action" onclick="send('copyForAI')" title="Bundle files, anonymize, and copy to clipboard for AI tools">
+        <button class="action-btn ai-action" onclick="send('copyForAI')" title="Bundle files, anonymize, and copy to clipboard for AI tools" ${!hasSession ? 'disabled' : ''}>
             <span class="codicon codicon-sparkle"></span> Export
-        </button>` : ''}
+        </button>
     </div>
 
     <div class="status-bar ${hasSession ? 'active' : ''}">

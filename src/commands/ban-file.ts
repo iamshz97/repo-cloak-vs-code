@@ -7,8 +7,9 @@
 
 import * as vscode from 'vscode';
 import { unlinkSync } from 'fs';
-import { join } from 'path';
+import { join, relative } from 'path';
 import { SidebarProvider } from '../views/sidebar-provider';
+import { FileTreeProvider } from '../views/file-tree-provider';
 import {
     hasMapping, loadRawMapping, saveMapping
 } from '../core/mapper';
@@ -17,12 +18,36 @@ import { addBan } from '../core/ban-list';
 import { notifyWarn } from '../core/notify';
 
 export async function executeBanFile(
-    uriOrItem: vscode.Uri | { fullPath: string } | undefined,
+    uriOrItem: vscode.Uri | { fullPath: string; rootPath?: string; sourceLabel?: string } | undefined,
     sidebarProvider: SidebarProvider,
-    outputChannel: vscode.OutputChannel
+    outputChannel: vscode.OutputChannel,
+    fileTreeProvider?: FileTreeProvider
 ): Promise<void> {
     // Resolve the target file — works from both explorer/context (Uri) and
     // view/item/context on a FileTreeItem ({ fullPath: string })
+    // ── Pre-pull ban: file is from the source tree (not yet in the cloak) ──
+    if (
+        uriOrItem &&
+        !(uriOrItem instanceof vscode.Uri) &&
+        typeof (uriOrItem as any).sourceLabel === 'string' &&
+        typeof (uriOrItem as any).rootPath === 'string'
+    ) {
+        const item = uriOrItem as { fullPath: string; rootPath: string; sourceLabel: string };
+        const relPath = relative(item.rootPath, item.fullPath).replace(/\\/g, '/');
+        if (!relPath) {
+            notifyWarn('Could not determine relative path.');
+            return;
+        }
+        const secret = getOrCreateSecret();
+        addBan(item.sourceLabel, relPath, secret);
+        fileTreeProvider?.banPathInTree(item.fullPath);
+        vscode.window.setStatusBarMessage(
+            `$(circle-slash) Banned "${relPath.split('/').pop()}" from "${item.sourceLabel}" — will be excluded from all future pulls`,
+            4000
+        );
+        return;
+    }
+
     let targetUri: vscode.Uri | undefined;
     if (uriOrItem instanceof vscode.Uri) {
         targetUri = uriOrItem;

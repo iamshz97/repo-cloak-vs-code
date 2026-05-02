@@ -14,7 +14,8 @@ export class FileTreeItem extends vscode.TreeItem {
         public readonly fullPath: string,
         public readonly isDir: boolean,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly rootPath: string
+        public readonly rootPath: string,
+        public readonly sourceLabel?: string
     ) {
         super(label, collapsibleState);
         this.tooltip = relative(rootPath, fullPath);
@@ -47,6 +48,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     private _searchFilter: string = '';
     private _purpose: { title: string; message?: string } | null = null;
     private _bannedPaths: Set<string> | null = null;
+    private _currentSourceLabel: string | null = null;
 
     get checkedPaths(): Set<string> {
         return this._checkedPaths;
@@ -93,6 +95,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         this._searchFilter = '';
         this._resolveSelection = null;
         this._purpose = null;
+        this._currentSourceLabel = null;
         this._applyPurposeToView();
         this._onDidChangeTreeData.fire();
     }
@@ -105,7 +108,9 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         precheck?: string[];
         bannedPaths?: Set<string>;
         purpose?: { title: string; message?: string };
+        sourceLabel?: string;
     }): Promise<string[]> {
+        this._currentSourceLabel = options?.sourceLabel || null;
         this.setRoot(rootPath, options);
         this._purpose = options?.purpose || null;
         this._applyPurposeToView();
@@ -392,12 +397,24 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
                         entry.isDirectory()
                             ? (this._searchFilter ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
                             : vscode.TreeItemCollapsibleState.None,
-                        this._rootPath!
+                        this._rootPath!,
+                        this._currentSourceLabel ?? undefined
                     );
                 });
         } catch {
             return [];
         }
+    }
+
+    /**
+     * Mark a path as banned in the active tree selection:
+     * unchecks it and hides it from the tree immediately.
+     */
+    banPathInTree(fullPath: string): void {
+        this._checkedPaths.delete(fullPath);
+        if (!this._bannedPaths) { this._bannedPaths = new Set(); }
+        this._bannedPaths.add(fullPath);
+        this._onDidChangeTreeData.fire();
     }
 
     private _isPathAncestorOfAllowed(dirPath: string): boolean {

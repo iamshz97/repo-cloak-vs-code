@@ -264,6 +264,7 @@ export async function executePull(
             precheck: precheck.length > 0 ? precheck : undefined,
             allowedPaths,
             bannedPaths,
+            sourceLabel,
             purpose: {
                 title: `Pull → ${sourceLabel}`,
                 message: `Pick files to extract from "${sourceLabel}". Use Select All / Deselect All in the toolbar, then Confirm (✓) when ready.`

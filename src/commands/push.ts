@@ -162,6 +162,7 @@ export async function executePush(
         }
 
         // ── Step 8: Copy and de-anonymize ───────────────────────────────────
+        let cloakedRelPaths: string[] = [];
         await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Window,
@@ -180,6 +181,7 @@ export async function executePush(
                 // Get all files from the source subdirectory in the cloaked workspace
                 const sourceSubdir = join(cloakedDir!, targetLabel);
                 const files = getAllFiles(sourceSubdir).filter(f => f.name !== 'AGENTS.md');
+                cloakedRelPaths = files.map(f => join(targetLabel, f.relativePath));
 
                 if (files.length === 0) {
                     notifyWarn('No files found in the cloaked directory.');
@@ -217,12 +219,10 @@ export async function executePush(
         sidebarProvider.refresh();
         notifySuccess(`Restored "${targetLabel}" to ${destDir}`);
 
-        // Audit-trail commit (cloaked files unchanged — record the push as an event)
         await commitCloakedChange(
             cloakedDir!,
-            pushSubject(targetLabel, 0),
-            [],
-            { allowEmpty: true }
+            pushSubject(targetLabel, cloakedRelPaths.length),
+            cloakedRelPaths
         );
 
     } catch (error) {
@@ -276,6 +276,7 @@ export async function executePushAll(
         if (confirm !== 'Push All') { return; }
 
         // Push each source
+        let allCloakedRelPaths: string[] = [];
         await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Window,
@@ -303,6 +304,7 @@ export async function executePushAll(
 
                     const sourceSubdir = join(cloakedDir!, label);
                     const files = getAllFiles(sourceSubdir).filter(f => f.name !== 'AGENTS.md');
+                    allCloakedRelPaths.push(...files.map(f => join(label, f.relativePath)));
 
                     progress.report({
                         message: `${label} (${i + 1}/${sourceLabels.length} sources)`,
@@ -332,8 +334,7 @@ export async function executePushAll(
         await commitCloakedChange(
             cloakedDir!,
             `repo-cloak: push all (${sourceLabels.length} source${sourceLabels.length === 1 ? '' : 's'})`,
-            [],
-            { allowEmpty: true }
+            allCloakedRelPaths
         );
 
     } catch (error) {
@@ -386,6 +387,7 @@ export async function executeForcePushSource(
         outputChannel.clear();
         outputChannel.appendLine(`[Force Push] Restoring "${label}" to original path: ${source.path}...`);
 
+        let forcePushRelPaths: string[] = [];
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Window, title: `$(shield) $(cloud-upload) Force Pushing "${label}"...`, cancellable: false },
             async (progress) => {
@@ -398,6 +400,7 @@ export async function executeForcePushSource(
 
                 const sourceSubdir = join(cloakedDir, label);
                 const files = getAllFiles(sourceSubdir).filter(f => f.name !== 'AGENTS.md');
+                forcePushRelPaths = files.map(f => join(label, f.relativePath));
 
                 if (files.length === 0) {
                     notifyWarn(`No files found in "${label}" to restore.`);
@@ -424,9 +427,8 @@ export async function executeForcePushSource(
 
         await commitCloakedChange(
             cloakedDir,
-            forcePushSubject(label, 0),
-            [],
-            { allowEmpty: true }
+            forcePushSubject(label, forcePushRelPaths.length),
+            forcePushRelPaths
         );
     } catch (error) {
         vscode.window.showErrorMessage(`Force Push failed: ${(error as Error).message}`);

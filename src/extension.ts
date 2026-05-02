@@ -498,7 +498,7 @@ export function activate(context: vscode.ExtensionContext) {
     // ─── Ban File ───────────────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.banFile', (uriOrItem?: vscode.Uri | { fullPath: string }) => {
-            executeBanFile(uriOrItem, sidebarProvider, outputChannel);
+            executeBanFile(uriOrItem, sidebarProvider, outputChannel, fileTreeProvider);
         })
     );
 
