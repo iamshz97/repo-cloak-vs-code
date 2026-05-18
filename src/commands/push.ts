@@ -442,6 +442,9 @@ export async function executeForcePushSource(
             }
         );
 
+        // Track any unmapped files (new or renamed) so future pulls stay in sync
+        await trackUnmappedFiles(cloakedDir, mapping, label, outputChannel);
+
         notifySuccess(`Force Pushed "${label}" successfully.`);
 
         await commitCloakedChange(
