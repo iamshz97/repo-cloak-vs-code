@@ -15,6 +15,7 @@ import {
 import { hasSecret, getOrCreateSecret } from '../core/crypto';
 import { getAllFiles } from '../core/scanner';
 import { getBannedSet, hasBanList } from '../core/ban-list';
+import { anonymizePath, Replacement } from '../core/anonymizer';
 import { findCloakedDirectory, normalize } from './pull-helper';
 
 interface ProbeInput {
@@ -64,6 +65,10 @@ export class ProbeFileTool implements vscode.LanguageModelTool<ProbeInput> {
         } else if (raw.encrypted) {
             return errorResult('Mapping is encrypted but no secret available.');
         }
+
+        // Replacements used to mask proprietary path segments before returning to the AI
+        const replacements: Replacement[] = ((mapping.replacements as Replacement[]) || [])
+            .filter(r => r.original);
 
         const hint = normalize(options.input.pathHint || '');
         if (!hint) {
@@ -124,7 +129,9 @@ export class ProbeFileTool implements vscode.LanguageModelTool<ProbeInput> {
                     status = 'already-pulled';
                 }
 
-                matches.push({ sourceLabel: label, relativePath: rel, matchType, status });
+                // Mask the real path before presenting it to the AI agent
+                const maskedPath = anonymizePath(rel, replacements);
+                matches.push({ sourceLabel: label, relativePath: maskedPath, matchType, status });
                 if (matches.length >= max) { break; }
             }
             if (matches.length >= max) { break; }

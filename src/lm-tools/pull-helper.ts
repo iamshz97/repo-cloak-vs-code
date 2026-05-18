@@ -68,6 +68,12 @@ export async function pullFilesProgrammatically(
         replacements = (decryptedMapping.replacements as Replacement[]).filter(r => r.original);
     }
 
+    // Reverse replacements so we can de-anonymize paths the AI sends back to us
+    const reversedReplacements: Replacement[] = replacements.map(r => ({
+        original: r.replacement,
+        replacement: r.original
+    }));
+
     const source = getSourceByLabel(decryptedMapping, sourceLabel);
     if (!source) {
         throw new Error(`Source "${sourceLabel}" not found.`);
@@ -89,18 +95,20 @@ export async function pullFilesProgrammatically(
     // Filter incoming paths
     const candidates: string[] = [];
     for (const raw of relativePaths) {
-        const rel = normalize(raw);
-        const abs = join(sourceDir, rel);
-        if (banned.has(rel)) {
-            result.skippedBanned.push(rel);
+        const anonRel = normalize(raw);  // anonymized path as sent by the AI
+        // De-anonymize to recover the real path in the source repo
+        const realRel = anonymizePath(anonRel, reversedReplacements);
+        const abs = join(sourceDir, realRel);
+        if (banned.has(realRel)) {
+            result.skippedBanned.push(anonRel);
             continue;
         }
-        if (alreadyPulled.has(rel)) {
-            result.skippedAlreadyPulled.push(rel);
+        if (alreadyPulled.has(realRel)) {
+            result.skippedAlreadyPulled.push(anonRel);
             continue;
         }
         if (!existsSync(abs)) {
-            result.skippedNotFound.push(rel);
+            result.skippedNotFound.push(anonRel);
             continue;
         }
         candidates.push(abs);
@@ -124,7 +132,7 @@ export async function pullFilesProgrammatically(
             for (const abs of candidates) {
                 if (findingsByFile.has(abs)) {
                     result.skippedSecrets.push({
-                        path: relative(sourceDir, abs),
+                        path: anonymizePath(relative(sourceDir, abs), replacements),
                         findings: findingsByFile.get(abs)!
                     });
                 } else {
@@ -153,7 +161,10 @@ export async function pullFilesProgrammatically(
         replacements
     );
 
-    result.errors = copyResults.errors;
+    result.errors = copyResults.errors.map(e => ({
+        ...e,
+        file: anonymizePath(e.file, replacements)
+    }));
 
     // Update mapping
     const newFiles: FileEntry[] = candidates
@@ -176,7 +187,7 @@ export async function pullFilesProgrammatically(
     }
 
     result.pulled = newFiles.length;
-    result.pulledPaths = newFiles.map(f => f.original);
+    result.pulledPaths = newFiles.map(f => anonymizePath(f.original, replacements));
 
     outputChannel.appendLine(
         `[lm-pull] "${sourceLabel}": pulled ${result.pulled}/${result.requested} ` +
