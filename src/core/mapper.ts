@@ -377,6 +377,28 @@ export function getStaleFiles(mapping: MappingV2, label?: string): StaleFile[] {
 }
 
 /**
+ * Find files in the mapping whose cloaked copy has been deleted from the
+ * cloaked workspace. These are the mirror of stale files — instead of the
+ * source being gone, the cloaked copy is gone. Expects a fully decrypted mapping.
+ */
+export function getPendingDeletions(mapping: MappingV2, cloakedDir: string, label?: string): StaleFile[] {
+    const pending: StaleFile[] = [];
+    const sources = label
+        ? mapping.sources.filter(s => s.label === label)
+        : mapping.sources;
+
+    for (const s of sources) {
+        for (const f of s.files) {
+            if (!existsSync(join(cloakedDir, f.cloaked))) {
+                pending.push({ sourceLabel: s.label, original: f.original, cloaked: f.cloaked });
+            }
+        }
+    }
+
+    return pending;
+}
+
+/**
  * Remove file entries from a source by their cloaked relative paths.
  * Re-encrypts remaining `original` entries so the storage format is preserved.
  */

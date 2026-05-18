@@ -4,16 +4,17 @@
  */
 
 import * as vscode from 'vscode';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import { resolve, join } from 'path';
 import { SidebarProvider } from '../views/sidebar-provider';
-import { createDeanonymizer } from '../core/anonymizer';
+import { createDeanonymizer, anonymizePath, Replacement } from '../core/anonymizer';
 import { copyFiles } from '../core/copier';
 import { commitCloakedChange, pushSubject, forcePushSubject } from '../core/cloaked-git';
 import { getAllFiles } from '../core/scanner';
 import {
-    hasMapping, loadMapping, decryptMappingV2, MappingV2,
-    getSourceLabels, getSourceByLabel
+    hasMapping, loadMapping, loadRawMapping, decryptMappingV2, MappingV2, StaleFile, FileEntry,
+    getSourceLabels, getSourceByLabel, getPendingDeletions, removeFilesFromSource, saveMapping,
+    mergeFilesIntoSource
 } from '../core/mapper';
 import { hasSecret, getOrCreateSecret } from '../core/crypto';
 import { notifySuccess, notifyWarn } from '../core/notify';
@@ -91,8 +92,12 @@ export async function executePush(
             return;
         }
 
-        // ── Step 4: Show mapping info ───────────────────────────────────────
+        // ── Step 4: Check for deleted cloaked files ─────────────────────────
         outputChannel.clear();
+        const pendingDels = getPendingDeletions(mapping, cloakedDir!, targetLabel);
+        await resolvePendingDeletions(cloakedDir!, mapping, pendingDels, outputChannel);
+
+        // ── Step 5: Show mapping info ───────────────────────────────────────
         outputChannel.appendLine(`Source: ${targetLabel}`);
         outputChannel.appendLine(`  Original path: ${source.path}`);
         outputChannel.appendLine(`  Files: ${source.files.length}`);
@@ -106,7 +111,7 @@ export async function executePush(
             }
         }
 
-        // ── Step 5: Get destination ─────────────────────────────────────────
+        // ── Step 6: Get destination ─────────────────────────────────────────
         let destDir: string;
 
         if (source.path && existsSync(source.path)) {
@@ -147,7 +152,7 @@ export async function executePush(
             destDir = uris[0].fsPath;
         }
 
-        // ── Step 6: Confirm ─────────────────────────────────────────────────
+        // ── Step 7: Confirm ─────────────────────────────────────────────────
         const confirm = await vscode.window.showInformationMessage(
             `Restore ${source.files.length} files from "${targetLabel}" to ${destDir}?`,
             { modal: true },
@@ -156,12 +161,12 @@ export async function executePush(
 
         if (confirm !== 'Restore') { return; }
 
-        // ── Step 7: Create destination if needed ────────────────────────────
+        // ── Step 8: Create destination if needed ────────────────────────────
         if (!existsSync(destDir)) {
             mkdirSync(destDir, { recursive: true });
         }
 
-        // ── Step 8: Copy and de-anonymize ───────────────────────────────────
+        // ── Step 9: Copy and de-anonymize ───────────────────────────────────
         let cloakedRelPaths: string[] = [];
         await vscode.window.withProgress(
             {
@@ -216,6 +221,10 @@ export async function executePush(
             }
         );
 
+        // Track any files in the cloaked workspace that aren't in the mapping yet
+        // (covers renames and new files added by the user or an AI agent)
+        await trackUnmappedFiles(cloakedDir!, mapping, targetLabel, outputChannel);
+
         sidebarProvider.refresh();
         notifySuccess(`Restored "${targetLabel}" to ${destDir}`);
 
@@ -262,6 +271,11 @@ export async function executePushAll(
         }
 
         // Show summary
+        // Check for deleted cloaked files across all sources before confirming
+        outputChannel.clear();
+        const allPending = getPendingDeletions(mapping, cloakedDir!);
+        await resolvePendingDeletions(cloakedDir!, mapping, allPending, outputChannel);
+
         const sourceInfo = sourceLabels.map(label => {
             const source = getSourceByLabel(mapping, label);
             return `  ${label} -> ${source?.path || '[unknown]'} (${source?.files.length || 0} files)`;
@@ -327,6 +341,11 @@ export async function executePushAll(
                 outputChannel.appendLine(`\n[done] Total: ${totalRestored} files restored across ${sourceLabels.length} sources`);
             }
         );
+
+        // Track any unmapped files across all sources (renames, AI-created files, etc.)
+        for (const label of sourceLabels) {
+            await trackUnmappedFiles(cloakedDir!, mapping, label, outputChannel);
+        }
 
         sidebarProvider.refresh();
         notifySuccess(`All ${sourceLabels.length} sources restored`);
@@ -434,6 +453,139 @@ export async function executeForcePushSource(
         vscode.window.showErrorMessage(`Force Push failed: ${(error as Error).message}`);
     } finally {
         sidebarProvider.refresh();
+    }
+}
+
+/**
+ * Detect files present in the cloaked workspace that have no mapping entry —
+ * e.g. files renamed by the user or created by an AI agent. Computes each
+ * file's original path by reversing path-level anonymization and silently
+ * adds them to the mapping so future pulls stay in sync.
+ */
+async function trackUnmappedFiles(
+    cloakedDir: string,
+    mapping: MappingV2,
+    label: string,
+    outputChannel: vscode.OutputChannel
+): Promise<number> {
+    const validReplacements = (mapping.replacements as any[] || []).filter((r: any) => r.original);
+    // Reverse the replacements so anonymized path segments become the original names
+    const reversedReplacements: Replacement[] = validReplacements.map((r: any) => ({
+        original: r.replacement as string,
+        replacement: r.original as string
+    }));
+
+    const sourceSubdir = join(cloakedDir, label);
+    const cloakedFiles = getAllFiles(sourceSubdir).filter(f => f.name !== 'AGENTS.md');
+
+    // Load a fresh raw mapping — pending-deletion cleanup may have already saved changes
+    const rawMapping = loadRawMapping(cloakedDir);
+    if (!rawMapping) { return 0; }
+
+    const src = rawMapping.sources.find(s => s.label === label);
+    if (!src) { return 0; }
+
+    const mappedCloakedPaths = new Set(src.files.map(f => f.cloaked));
+
+    const newEntries: FileEntry[] = cloakedFiles
+        .map(f => ({
+            cloaked: join(label, f.relativePath),
+            original: anonymizePath(f.relativePath, reversedReplacements)
+        }))
+        .filter(e => !mappedCloakedPaths.has(e.cloaked));
+
+    if (newEntries.length === 0) { return 0; }
+
+    const updatedRaw = mergeFilesIntoSource(rawMapping, label, newEntries);
+    saveMapping(cloakedDir, updatedRaw);
+
+    outputChannel.appendLine(`\n[tracking] Added ${newEntries.length} new file(s) to the mapping:`);
+    for (const e of newEntries) {
+        outputChannel.appendLine(`  + ${e.original}`);
+    }
+
+    return newEntries.length;
+}
+
+/**
+ * Check for files deleted from the cloaked workspace and offer to propagate
+ * those deletions back to the original source repository.
+ *
+ * - "Delete from source" → QuickPick lets the user choose which files to delete,
+ *   then removes all pending entries from the mapping.
+ * - "Remove from tracking only" → cleans up the stale mapping entries, no deletion.
+ * - Escape / cancel → skips silently; the user will be asked again on the next push.
+ */
+async function resolvePendingDeletions(
+    cloakedDir: string,
+    mapping: MappingV2,
+    pending: StaleFile[],
+    outputChannel: vscode.OutputChannel
+): Promise<void> {
+    if (pending.length === 0) { return; }
+
+    const preview = pending.slice(0, 8).map(d => `• ${d.original}`).join('\n');
+    const overflow = pending.length > 8 ? `\n…and ${pending.length - 8} more` : '';
+
+    const action = await vscode.window.showWarningMessage(
+        `${pending.length} tracked file(s) no longer exist in the cloaked workspace`,
+        {
+            modal: true,
+            detail: `${preview}${overflow}\n\nWould you like to also delete them from the original repository, or just remove them from tracking?`
+        },
+        'Delete from source',
+        'Remove from tracking only'
+    );
+
+    if (!action) { return; } // Escaped — leave mapping untouched, ask again next push
+
+    if (action === 'Delete from source') {
+        const picks = await vscode.window.showQuickPick(
+            pending.map(d => ({
+                label: d.original.split('/').pop() || d.original,
+                description: d.original,
+                detail: `Source: ${d.sourceLabel}`,
+                picked: true,
+                _file: d
+            })),
+            {
+                canPickMany: true,
+                title: 'Select files to delete from the original repository',
+                placeHolder: 'All pre-selected — deselect any you want to keep'
+            }
+        );
+
+        if (!picks) { return; } // QuickPick cancelled — skip entirely
+
+        for (const pick of picks) {
+            const d = (pick as any)._file as StaleFile;
+            const src = mapping.sources.find(s => s.label === d.sourceLabel);
+            if (!src?.path) { continue; }
+            const absPath = resolve(src.path, d.original);
+            if (existsSync(absPath)) {
+                try {
+                    unlinkSync(absPath);
+                    outputChannel.appendLine(`[deleted from source] ${d.sourceLabel}/${d.original}`);
+                } catch (e) {
+                    outputChannel.appendLine(`[warn] Could not delete ${d.original}: ${(e as Error).message}`);
+                }
+            }
+        }
+    }
+
+    // Clean up all pending mapping entries (regardless of delete/tracking-only choice)
+    const byLabel = new Map<string, string[]>();
+    for (const d of pending) {
+        const arr = byLabel.get(d.sourceLabel) ?? [];
+        arr.push(d.cloaked);
+        byLabel.set(d.sourceLabel, arr);
+    }
+    let currentRaw = loadRawMapping(cloakedDir);
+    if (currentRaw) {
+        for (const [lbl, cloakedPaths] of byLabel) {
+            currentRaw = removeFilesFromSource(currentRaw, lbl, cloakedPaths);
+        }
+        saveMapping(cloakedDir, currentRaw);
     }
 }
 
