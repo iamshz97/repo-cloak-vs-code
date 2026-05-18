@@ -9,6 +9,7 @@ import { FileTreeProvider } from './views/file-tree-provider';
 import { executePull, executePullSource, executePullSourceGit, executePullAction } from './commands/pull';
 import { executePush, executePushAll, executePushAction, executeForcePushSource } from './commands/push';
 import { executeForcePullAll, executeForcePullSource } from './commands/force-pull';
+import { executeResetSource } from './commands/reset-source';
 import { executeCopyForAI } from './commands/copy-for-ai';
 import { executeResolveOrphans } from './commands/orphans';
 import {
@@ -99,6 +100,12 @@ export function activate(context: vscode.ExtensionContext) {
             if (label) {
                 executeForcePullSource(label, sidebarProvider, outputChannel);
             }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.resetSource', (label?: string) => {
+            executeResetSource(label, sidebarProvider, outputChannel);
         })
     );
 
