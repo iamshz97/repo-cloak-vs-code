@@ -599,8 +599,19 @@ export async function executePullSource(
             return;
         }
 
+        // Build banned paths so they are hidden in the tree
+        let bannedPaths: Set<string> | undefined;
+        if (hasBanList() && hasSecret()) {
+            const secret = getOrCreateSecret();
+            const bannedRels = getBannedSet(label, secret);
+            if (bannedRels.size > 0) {
+                bannedPaths = new Set([...bannedRels].map(r => join(sourceDir, r)));
+            }
+        }
+
         // Show file tree for the source directory
         let selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
+            bannedPaths,
             purpose: {
                 title: `Pull more → ${label}`,
                 message: `Add more files to "${label}". Confirm (✓) when done.`
@@ -782,7 +793,19 @@ export async function executePullSourceGit(
         }
 
         // Resolve to absolute paths
-        const absolutePaths = gitFiles.map(f => resolve(sourceDir, f)).filter(f => existsSync(f));
+        // Build banned paths — filter from both the pre-checked list and the visible tree
+        let bannedPathsGit: Set<string> | undefined;
+        if (hasBanList() && hasSecret()) {
+            const secret = getOrCreateSecret();
+            const bannedRels = getBannedSet(label, secret);
+            if (bannedRels.size > 0) {
+                bannedPathsGit = new Set([...bannedRels].map(r => join(sourceDir, r)));
+            }
+        }
+
+        const absolutePaths = gitFiles
+            .map(f => resolve(sourceDir, f))
+            .filter(f => existsSync(f) && !(bannedPathsGit && bannedPathsGit.has(f)));
         if (absolutePaths.length === 0) {
             notifyWarn('None of the changed files exist on disk.');
             return;
@@ -793,6 +816,7 @@ export async function executePullSourceGit(
         let selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
             precheck: absolutePaths,
             allowedPaths,
+            bannedPaths: bannedPathsGit,
             purpose: {
                 title: `Pull (Git) → ${label}`,
                 message: `Confirm Git-changed files to pull into "${label}".`

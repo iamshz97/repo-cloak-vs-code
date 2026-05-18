@@ -267,10 +267,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             : '';
         // Banned files section
         let bannedHtml = '';
+        let bannedCount = 0;
         if (hasBanList() && hasSecret()) {
             try {
                 const secret = getOrCreateSecret();
                 const allBans = getAllBans(secret);
+                bannedCount = allBans.length;
                 if (allBans.length > 0) {
                     const banRows = allBans.map((b, i) => {
                         const filename = escapeHtml(b.originalRelPath.split('/').pop() || b.originalRelPath);
@@ -296,7 +298,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     const banToggle = allBans.length > COLLAPSE_THRESHOLD
                         ? `<button class="toggle-more" data-toggle="banned" onclick="toggleSection(this,'banned',${allBans.length - COLLAPSE_THRESHOLD})">Show ${allBans.length - COLLAPSE_THRESHOLD} more</button>`
                         : '';
-                    bannedHtml = `<div class="collapsible" data-section="banned" data-collapsed="true">${banRows}</div>${banToggle}`;
+                    bannedHtml = `<div id="banned-list" style="display:none"><div class="collapsible" data-section="banned" data-collapsed="true">${banRows}</div>${banToggle}</div>`;
                 }
             } catch {
                 // ignore
@@ -619,6 +621,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         background: var(--vscode-list-hoverBackground);
         opacity: 1;
     }
+    .section-header.clickable {
+        cursor: pointer;
+        user-select: none;
+        border-radius: var(--item-radius);
+        padding: 2px 4px;
+        margin: 0 -4px 4px;
+    }
+    .section-header.clickable:hover {
+        background: var(--vscode-list-hoverBackground);
+    }
+    .count-badge {
+        font-size: 10px;
+        font-weight: 600;
+        padding: 1px 5px;
+        border-radius: 8px;
+        background: var(--vscode-badge-background);
+        color: var(--vscode-badge-foreground);
+        min-width: 16px;
+        text-align: center;
+    }
 
     @keyframes spin {
         100% { transform: rotate(360deg); }
@@ -692,8 +714,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     ${bannedHtml ? `
     <div class="section">
-        <div class="section-header">
-            <span class="section-title">Banned</span>
+        <div class="section-header clickable" onclick="toggleBannedSection(this)" title="Toggle banned files list">
+            <div style="display:flex;align-items:center;gap:5px;">
+                <span class="codicon codicon-chevron-right" id="banned-chevron" style="font-size:11px;opacity:0.7"></span>
+                <span class="section-title">Banned</span>
+                <span class="count-badge">${bannedCount}</span>
+            </div>
         </div>
         ${bannedHtml}
     </div>
@@ -738,6 +764,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             const collapsed = wrap.getAttribute('data-collapsed') === 'true';
             wrap.setAttribute('data-collapsed', collapsed ? 'false' : 'true');
             btn.textContent = collapsed ? 'Show less' : 'Show ' + hiddenCount + ' more';
+        }
+        function toggleBannedSection(headerEl) {
+            const list = document.getElementById('banned-list');
+            if (!list) { return; }
+            const isHidden = list.style.display === 'none';
+            list.style.display = isHidden ? '' : 'none';
+            const chevron = document.getElementById('banned-chevron');
+            if (chevron) {
+                chevron.className = isHidden ? 'codicon codicon-chevron-down' : 'codicon codicon-chevron-right';
+            }
         }
     </script>
 </body>

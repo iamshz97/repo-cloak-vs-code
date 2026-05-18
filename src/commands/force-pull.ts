@@ -9,6 +9,7 @@ import { createAnonymizer, Replacement } from '../core/anonymizer';
 import { copyFiles } from '../core/copier';
 import { commitCloakedChange, forcePullSubject } from '../core/cloaked-git';
 import { getOrCreateSecret, hasSecret } from '../core/crypto';
+import { getBannedSet, hasBanList } from '../core/ban-list';
 import { SidebarProvider } from '../views/sidebar-provider';
 import { notifySuccess, notifyWarn } from '../core/notify';
 
@@ -82,9 +83,17 @@ export async function executeForcePullAll(
                     const sourceDir = source.path;
                     const destSubdir = join(cloakedDir, label);
 
+                    // Filter out banned files before copying
+                    let bannedAbsolute: Set<string> = new Set();
+                    if (hasBanList() && hasSecret()) {
+                        const secret = getOrCreateSecret();
+                        const bannedRels = getBannedSet(label, secret);
+                        bannedAbsolute = new Set([...bannedRels].map(r => resolve(sourceDir, r)));
+                    }
+
                     const validFiles = source.files
                         .map((f: any) => resolve(sourceDir, f.original))
-                        .filter(f => existsSync(f));
+                        .filter(f => existsSync(f) && !bannedAbsolute.has(f));
 
                     if (validFiles.length === 0) {
                         outputChannel.appendLine(`[warn] Skipping "${label}" — none of the mapped files exist locally anymore.`);
@@ -164,9 +173,17 @@ export async function executeForcePullSource(
         const replacements = (mapping.replacements as Replacement[] || []).filter(r => r.original);
         const anonymizer = createAnonymizer(replacements);
 
+        // Filter out banned files before copying
+        let bannedAbsolute: Set<string> = new Set();
+        if (hasBanList() && hasSecret()) {
+            const secret = getOrCreateSecret();
+            const bannedRels = getBannedSet(label, secret);
+            bannedAbsolute = new Set([...bannedRels].map(r => resolve(sourceDir, r)));
+        }
+
         const validFiles = source.files
             .map((f: any) => resolve(sourceDir, f.original))
-            .filter(f => existsSync(f));
+            .filter(f => existsSync(f) && !bannedAbsolute.has(f));
 
         if (validFiles.length === 0) {
             notifyWarn(`No previously mapped files currently exist in "${label}".`);
