@@ -141,6 +141,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    public setProcessing(active: boolean): void {
+        if (this._view) {
+            this._view.webview.postMessage({ command: 'setProcessing', active });
+        }
+    }
+
     refresh(): void {
         this._detectMapping();
         this._updateView();
@@ -647,6 +653,44 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     .spinning { animation: spin 1s linear infinite; }
 
+    /* ── Processing border ring ── */
+    @property --rc-angle {
+        syntax: '<angle>';
+        initial-value: 0deg;
+        inherits: false;
+    }
+    @keyframes rc-spin-border {
+        to { --rc-angle: 360deg; }
+    }
+    #rc-ring {
+        display: none;
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 9999;
+        background: conic-gradient(
+            from var(--rc-angle),
+            transparent 0deg,
+            transparent 20deg,
+            #1a7fd4 40deg,
+            #60cdff 60deg,
+            #1a7fd4 80deg,
+            transparent 100deg,
+            transparent 360deg
+        );
+        -webkit-mask:
+            linear-gradient(#fff,#fff) no-repeat center / calc(100% - 4px) calc(100% - 4px),
+            linear-gradient(#fff,#fff) no-repeat;
+        -webkit-mask-composite: destination-out;
+        mask:
+            linear-gradient(#fff,#fff) no-repeat center / calc(100% - 4px) calc(100% - 4px),
+            linear-gradient(#fff,#fff) no-repeat;
+        mask-composite: exclude;
+        filter: blur(0.4px);
+        animation: rc-spin-border 2.5s linear infinite;
+    }
+    body.rc-busy #rc-ring { display: block; }
+
     /* ── Empty ─── */
     .empty {
         font-size: 11px;
@@ -725,10 +769,33 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     </div>
     ` : ''}
 
+    <div id="rc-ring"></div>
+
     <script>
         const vscode = acquireVsCodeApi();
         const NO_SPINNER = new Set(['sourceMenu', 'managePresets', 'managePrTemplates', 'prSummary', 'addSource', 'addReplacement', 'resolveOrphans']);
+
+        let _rcBusyTimer = null;
+        function setBusy(active) {
+            document.body.classList.toggle('rc-busy', !!active);
+            if (_rcBusyTimer) { clearTimeout(_rcBusyTimer); _rcBusyTimer = null; }
+            if (active) {
+                // Safety fallback: auto-clear after 60 s in case the extension
+                // doesn't send setProcessing(false) (e.g., copy-for-AI).
+                _rcBusyTimer = setTimeout(() => setBusy(false), 60000);
+            }
+        }
+
+        window.addEventListener('message', e => {
+            if (e.data && e.data.command === 'setProcessing') {
+                setBusy(!!e.data.active);
+            }
+        });
+
         function send(cmd, label, btn) {
+            if (!NO_SPINNER.has(cmd)) {
+                setBusy(true);
+            }
             if (btn && !NO_SPINNER.has(cmd)) {
                 const icon = btn.querySelector('.codicon');
                 if (icon) {

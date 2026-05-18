@@ -64,73 +64,95 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ─── Pull ───────────────────────────────────────────────────────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.pullAction', () => {
-            executePullAction(fileTreeProvider, sidebarProvider, outputChannel);
+        vscode.commands.registerCommand('repo-cloak.pullAction', async () => {
+            sidebarProvider.setProcessing(true);
+            try { await executePullAction(fileTreeProvider, sidebarProvider, outputChannel); }
+            finally { sidebarProvider.setProcessing(false); }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.pull', () => {
-            executePull(fileTreeProvider, sidebarProvider, outputChannel);
+        vscode.commands.registerCommand('repo-cloak.pull', async () => {
+            sidebarProvider.setProcessing(true);
+            try { await executePull(fileTreeProvider, sidebarProvider, outputChannel); }
+            finally { sidebarProvider.setProcessing(false); }
         })
     );
 
     // Pull for a specific source (re-pull / add more files)
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.pullSource', (label?: string) => {
-            executePullSource(label, fileTreeProvider, sidebarProvider, outputChannel);
+        vscode.commands.registerCommand('repo-cloak.pullSource', async (label?: string) => {
+            sidebarProvider.setProcessing(true);
+            try { await executePullSource(label, fileTreeProvider, sidebarProvider, outputChannel); }
+            finally { sidebarProvider.setProcessing(false); }
         })
     );
 
     // Pull from Git changes for a specific source
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.pullSourceGit', (label?: string) => {
-            executePullSourceGit(label, fileTreeProvider, sidebarProvider, outputChannel);
+        vscode.commands.registerCommand('repo-cloak.pullSourceGit', async (label?: string) => {
+            sidebarProvider.setProcessing(true);
+            try { await executePullSourceGit(label, fileTreeProvider, sidebarProvider, outputChannel); }
+            finally { sidebarProvider.setProcessing(false); }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.forcePullAll', () => {
-            executeForcePullAll(sidebarProvider, outputChannel);
+        vscode.commands.registerCommand('repo-cloak.forcePullAll', async () => {
+            sidebarProvider.setProcessing(true);
+            try { await executeForcePullAll(sidebarProvider, outputChannel); }
+            finally { sidebarProvider.setProcessing(false); }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.forcePullSource', (label?: string) => {
+        vscode.commands.registerCommand('repo-cloak.forcePullSource', async (label?: string) => {
             if (label) {
-                executeForcePullSource(label, sidebarProvider, outputChannel);
+                sidebarProvider.setProcessing(true);
+                try { await executeForcePullSource(label, sidebarProvider, outputChannel); }
+                finally { sidebarProvider.setProcessing(false); }
             }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.resetSource', (label?: string) => {
-            executeResetSource(label, sidebarProvider, outputChannel);
+        vscode.commands.registerCommand('repo-cloak.resetSource', async (label?: string) => {
+            sidebarProvider.setProcessing(true);
+            try { await executeResetSource(label, sidebarProvider, outputChannel); }
+            finally { sidebarProvider.setProcessing(false); }
         })
     );
 
     // ─── Push ───────────────────────────────────────────────────────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.pushAction', () => {
-            executePushAction(sidebarProvider, outputChannel);
+        vscode.commands.registerCommand('repo-cloak.pushAction', async () => {
+            sidebarProvider.setProcessing(true);
+            try { await executePushAction(sidebarProvider, outputChannel); }
+            finally { sidebarProvider.setProcessing(false); }
         })
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.push', () => {
-            executePush(sidebarProvider, outputChannel);
+        vscode.commands.registerCommand('repo-cloak.push', async () => {
+            sidebarProvider.setProcessing(true);
+            try { await executePush(sidebarProvider, outputChannel); }
+            finally { sidebarProvider.setProcessing(false); }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.pushAll', () => {
-            executePushAll(sidebarProvider, outputChannel);
+        vscode.commands.registerCommand('repo-cloak.pushAll', async () => {
+            sidebarProvider.setProcessing(true);
+            try { await executePushAll(sidebarProvider, outputChannel); }
+            finally { sidebarProvider.setProcessing(false); }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.forcePushSource', (label?: string) => {
+        vscode.commands.registerCommand('repo-cloak.forcePushSource', async (label?: string) => {
             if (label) {
-                executeForcePushSource(label, sidebarProvider, outputChannel);
+                sidebarProvider.setProcessing(true);
+                try { await executeForcePushSource(label, sidebarProvider, outputChannel); }
+                finally { sidebarProvider.setProcessing(false); }
             }
         })
     );
@@ -342,8 +364,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ─── Copy for AI ────────────────────────────────────────────────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('repo-cloak.copyForAI', (label?: string) => {
-            executeCopyForAI(label, fileTreeProvider, sidebarProvider, outputChannel);
+        vscode.commands.registerCommand('repo-cloak.copyForAI', async (label?: string) => {
+            sidebarProvider.setProcessing(true);
+            try { await executeCopyForAI(label, fileTreeProvider, sidebarProvider, outputChannel); }
+            finally { sidebarProvider.setProcessing(false); }
         })
     );
 
