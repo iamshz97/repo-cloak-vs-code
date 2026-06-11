@@ -5,7 +5,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { rmSync, existsSync } from 'fs';
+import { rmSync, existsSync, writeFileSync, unlinkSync } from 'fs';
 import { SidebarProvider } from './views/sidebar-provider';
 import { FileTreeProvider } from './views/file-tree-provider';
 import { executePull, executePullSource, executePullSourceGit, executePullAction } from './commands/pull';
@@ -24,7 +24,7 @@ import { getPresets, savePreset, deletePreset, ReplacementPair } from './core/pr
 import { executePrSummary, executeManagePrTemplates } from './commands/pr-summary';
 import { registerChatParticipant } from './chat/participant';
 import { executeBanFile } from './commands/ban-file';
-import { addPattern, addOverride } from './core/ban-patterns';
+import { addPattern, addOverride, getBanPatterns, setBanPatterns } from './core/ban-patterns';
 import { notifySuccess, notifyWarn } from './core/notify';
 import { ProbeFileTool } from './lm-tools/probe-file';
 import { RequestPullTool } from './lm-tools/request-pull';
@@ -594,6 +594,151 @@ export function activate(context: vscode.ExtensionContext) {
                 sidebarProvider.refresh();
                 vscode.window.setStatusBarMessage(`$(debug-step-over) Override added: "${input.trim()}"`, 3000);
             }
+        })
+    );
+
+    // ─── Bulk edit: wildcard ban patterns ───────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.editBanPatterns', async () => {
+            const current = getBanPatterns();
+            const tmpPath = path.join(require('os').tmpdir(), 'repo-cloak-ban-patterns.txt');
+
+            const header = [
+                '# Repo Cloak — Wildcard Ban Patterns',
+                '# One glob pattern per line.  Lines starting with # are comments.',
+                '# Examples:  *.Designer.cs   **/Migrations/**   *.env   **/*.min.js',
+                '# Save this file to apply changes.  Close without saving to cancel.',
+                '#',
+                '# ── OVERRIDES (files to allow even if they match a pattern) ──────────',
+                '# Prefix override paths with "override:" e.g.  override:src/seed/InitialCreate.Designer.cs',
+                '',
+            ].join('\n');
+
+            const patternLines = current.patterns.join('\n');
+            const overrideLines = current.overrides.map(o => `override:${o}`).join('\n');
+            const body = [patternLines, overrideLines].filter(Boolean).join('\n');
+
+            writeFileSync(tmpPath, header + body + '\n', 'utf-8');
+
+            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(tmpPath));
+            await vscode.window.showTextDocument(doc, { preview: false });
+
+            const watcher = vscode.workspace.onDidSaveTextDocument(saved => {
+                if (saved.uri.fsPath !== tmpPath) { return; }
+
+                const lines = saved.getText().split('\n')
+                    .map(l => l.trim())
+                    .filter(l => l && !l.startsWith('#'));
+
+                const patterns: string[] = [];
+                const overrides: string[] = [];
+                for (const line of lines) {
+                    if (line.startsWith('override:')) {
+                        const o = line.slice('override:'.length).trim();
+                        if (o) { overrides.push(o); }
+                    } else {
+                        patterns.push(line);
+                    }
+                }
+
+                setBanPatterns(patterns, overrides);
+                sidebarProvider.refresh();
+                vscode.window.setStatusBarMessage(
+                    `$(regex) Ban patterns saved — ${patterns.length} pattern(s), ${overrides.length} override(s)`,
+                    4000
+                );
+            });
+
+            // Clean up watcher when the document is closed
+            const closeWatcher = vscode.workspace.onDidCloseTextDocument(closed => {
+                if (closed.uri.fsPath !== tmpPath) { return; }
+                watcher.dispose();
+                closeWatcher.dispose();
+                try { unlinkSync(tmpPath); } catch { /* ignore */ }
+            });
+
+            context.subscriptions.push(watcher, closeWatcher);
+        })
+    );
+
+    // ─── Bulk edit: keyword replacements (global presets) ───────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.editReplacements', async () => {
+            const cloakedDir = findCloakedDirectory();
+            const tmpPath = path.join(require('os').tmpdir(), 'repo-cloak-replacements.txt');
+
+            // Load existing replacements from the active mapping (decrypted)
+            let existingPairs: { original: string; replacement: string }[] = [];
+            if (cloakedDir) {
+                const raw = loadRawMapping(cloakedDir);
+                if (raw && raw.encrypted && hasSecret()) {
+                    try {
+                        const dec = decryptMappingV2(raw, getOrCreateSecret());
+                        existingPairs = (dec.replacements as any[] || [])
+                            .filter((r: any) => r.original)
+                            .map((r: any) => ({ original: r.original, replacement: r.replacement }));
+                    } catch { /* ignore */ }
+                }
+            }
+
+            const header = [
+                '# Repo Cloak — Keyword Replacements',
+                '# Format:  original text  →  replacement text',
+                '# Use a literal " → " (space-arrow-space) as separator.',
+                '# Lines starting with # are comments.  Save to apply.  Close to cancel.',
+                '',
+            ].join('\n');
+
+            const body = existingPairs
+                .map(p => `${p.original} → ${p.replacement}`)
+                .join('\n');
+
+            writeFileSync(tmpPath, header + body + '\n', 'utf-8');
+
+            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(tmpPath));
+            await vscode.window.showTextDocument(doc, { preview: false });
+
+            const watcher = vscode.workspace.onDidSaveTextDocument(async saved => {
+                if (saved.uri.fsPath !== tmpPath) { return; }
+
+                const pairs: { original: string; replacement: string }[] = [];
+                for (const line of saved.getText().split('\n')) {
+                    const trimmed = line.trim();
+                    if (!trimmed || trimmed.startsWith('#')) { continue; }
+                    const sep = trimmed.indexOf(' → ');
+                    if (sep === -1) { continue; } // skip malformed lines silently
+                    const orig = trimmed.slice(0, sep).trim();
+                    const repl = trimmed.slice(sep + 3).trim();
+                    if (orig && repl) { pairs.push({ original: orig, replacement: repl }); }
+                }
+
+                if (!cloakedDir) {
+                    notifyWarn('No cloaked workspace open — changes saved to file but not applied.');
+                    return;
+                }
+
+                const raw = loadRawMapping(cloakedDir);
+                if (!raw) { return; }
+
+                const secret = getOrCreateSecret();
+                raw.replacements = encryptReplacements(pairs, secret);
+                raw.stats = { ...raw.stats, replacementsCount: pairs.length };
+                saveMapping(cloakedDir, raw);
+                sidebarProvider.refresh();
+                vscode.window.setStatusBarMessage(
+                    `$(replace-all) Replacements saved — ${pairs.length} pair(s)`,
+                    4000
+                );
+            });
+
+            const closeWatcher = vscode.workspace.onDidCloseTextDocument(closed => {
+                if (closed.uri.fsPath !== tmpPath) { return; }
+                watcher.dispose();
+                closeWatcher.dispose();
+                try { unlinkSync(tmpPath); } catch { /* ignore */ }
+            });
+
+            context.subscriptions.push(watcher, closeWatcher);
         })
     );
 

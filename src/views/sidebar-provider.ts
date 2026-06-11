@@ -121,6 +121,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'addBanPattern':
                     vscode.commands.executeCommand('repo-cloak.addBanPattern');
                     break;
+                case 'editBanPatterns':
+                    vscode.commands.executeCommand('repo-cloak.editBanPatterns');
+                    break;
+                case 'editReplacements':
+                    vscode.commands.executeCommand('repo-cloak.editReplacements');
+                    break;
                 case 'removeBanPattern':
                     if (message.pattern) {
                         removePattern(message.pattern);
@@ -847,6 +853,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             <span class="section-title">Replacements</span>
             <div class="header-actions">
                 <button class="icon-btn xs" onclick="send('managePresets')" title="Manage presets"><span class="codicon codicon-bookmark"></span></button>
+                <button class="icon-btn xs" onclick="send('editReplacements')" title="Bulk edit replacements — paste multiple pairs at once"><span class="codicon codicon-list-unordered"></span></button>
                 <button class="icon-btn xs" onclick="send('addReplacement')" title="Add replacement"><span class="codicon codicon-add"></span></button>
             </div>
         </div>
@@ -883,9 +890,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 <span class="section-title">Wildcard Patterns</span>
                 ${patternsCount > 0 ? `<span class="count-badge">${patternsCount}</span>` : ''}
             </div>
-            <button class="icon-btn xs" onclick="event.stopPropagation();send('addBanPattern')" title="Add wildcard pattern — e.g. *.Designer.cs or **/Migrations/**">
-                <span class="codicon codicon-add"></span>
-            </button>
+            <div style="display:flex;gap:2px" onclick="event.stopPropagation()">
+                <button class="icon-btn xs" onclick="send('editBanPatterns')" title="Bulk edit patterns — paste multiple patterns at once"><span class="codicon codicon-list-unordered"></span></button>
+                <button class="icon-btn xs" onclick="send('addBanPattern')" title="Add wildcard pattern — e.g. *.Designer.cs or **/Migrations/**"><span class="codicon codicon-add"></span></button>
+            </div>
         </div>
         ${patternsCount === 0
             ? `<p class="empty">No patterns — add one to exclude files globally (e.g. <code>*.Designer.cs</code>)</p>`
@@ -896,7 +904,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     <script>
         const vscode = acquireVsCodeApi();
-        const NO_SPINNER = new Set(['sourceMenu', 'managePresets', 'managePrTemplates', 'prSummary', 'addSource', 'addReplacement', 'resolveOrphans']);
+        const NO_SPINNER = new Set(['sourceMenu', 'managePresets', 'managePrTemplates', 'prSummary', 'addSource', 'addReplacement', 'resolveOrphans', 'editBanPatterns', 'editReplacements']);
 
         let _rcBusyTimer = null;
         function setBusy(active) {

@@ -92,6 +92,17 @@ export function addOverride(relPath: string): void {
     saveRaw(data);
 }
 
+/**
+ * Replace the full patterns + overrides lists in one write.
+ * Deduplicates and normalises slashes on overrides.
+ */
+export function setBanPatterns(patterns: string[], overrides: string[]): void {
+    const data = loadRaw();
+    data.patterns = [...new Set(patterns.map(p => p.trim()).filter(Boolean))];
+    data.overrides = [...new Set(overrides.map(o => o.trim().replace(/\\/g, '/')).filter(Boolean))];
+    saveRaw(data);
+}
+
 /** Remove an override. */
 export function removeOverride(relPath: string): void {
     const data = loadRaw();
