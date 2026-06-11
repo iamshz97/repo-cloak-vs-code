@@ -89,13 +89,10 @@ function matchCase(original: string, replacement: string): string {
         return replacement.charAt(0).toUpperCase() + replacement.slice(1).toLowerCase();
     }
 
-    // 4. camelCase (First lower, contains uppercase later)
-    if (!firstUpper) {
-        return replacement.charAt(0).toLowerCase() + replacement.slice(1);
-    }
-
-    // 5. PascalCase / MixedCase (First upper, contains uppercase later)
-    return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+    // 4 & 5 removed: camelCase / PascalCase / mixed-case inputs are ambiguous —
+    // the deanonymizer cannot reliably reconstruct the original casing on push.
+    // Fall back to the literal replacement so the round-trip is always safe.
+    return replacement;
 }
 
 /**
