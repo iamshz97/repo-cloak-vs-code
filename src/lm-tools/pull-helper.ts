@@ -18,6 +18,7 @@ import { copyFiles } from '../core/copier';
 import { commitCloakedChange, pullSubject } from '../core/cloaked-git';
 import { scanFilesForSecrets } from '../core/secrets';
 import { getBannedSet, hasBanList } from '../core/ban-list';
+import { matchesAnyPattern, hasPatterns } from '../core/ban-patterns';
 import { SidebarProvider } from '../views/sidebar-provider';
 
 export interface ProgrammaticPullInput {
@@ -89,7 +90,7 @@ export async function pullFilesProgrammatically(
     // Banned set
     let banned = new Set<string>();
     if (hasBanList() && hasSecret()) {
-        banned = getBannedSet(sourceLabel, getOrCreateSecret());
+        banned = getBannedSet(sourceDir, getOrCreateSecret());
     }
 
     // Filter incoming paths
@@ -101,6 +102,10 @@ export async function pullFilesProgrammatically(
         const abs = join(sourceDir, realRel);
         if (banned.has(realRel)) {
             result.skippedBanned.push(anonRel);
+            continue;
+        }
+        if (hasPatterns() && matchesAnyPattern(realRel)) {
+            result.skippedBanned.push(anonRel); // treated as banned for reporting
             continue;
         }
         if (alreadyPulled.has(realRel)) {

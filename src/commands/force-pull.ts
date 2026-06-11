@@ -10,6 +10,7 @@ import { copyFiles } from '../core/copier';
 import { commitCloakedChange, forcePullSubject } from '../core/cloaked-git';
 import { getOrCreateSecret, hasSecret } from '../core/crypto';
 import { getBannedSet, hasBanList } from '../core/ban-list';
+import { matchesAnyPattern, hasPatterns } from '../core/ban-patterns';
 import { SidebarProvider } from '../views/sidebar-provider';
 import { notifySuccess, notifyWarn } from '../core/notify';
 
@@ -102,13 +103,26 @@ export async function executeForcePullAll(
                     let bannedAbsolute: Set<string> = new Set();
                     if (hasBanList() && hasSecret()) {
                         const secret = getOrCreateSecret();
-                        const bannedRels = getBannedSet(label, secret);
+                        const bannedRels = getBannedSet(sourceDir, secret);
                         bannedAbsolute = new Set([...bannedRels].map(r => resolve(sourceDir, r)));
                     }
 
                     const validFiles = source.files
                         .map((f: any) => resolve(sourceDir, f.original))
-                        .filter(f => existsSync(f) && !bannedAbsolute.has(f));
+                        .filter(f => {
+                            if (!existsSync(f) || bannedAbsolute.has(f)) { return false; }
+                            if (hasPatterns()) {
+                                const rel = f.startsWith(sourceDir)
+                                    ? f.slice(sourceDir.length).replace(/^[\\/]/, '').replace(/\\/g, '/')
+                                    : f;
+                                const matchedPattern = matchesAnyPattern(rel);
+                                if (matchedPattern) {
+                                    outputChannel.appendLine(`[ban-pattern] Skipped "${rel}" — matches wildcard pattern "${matchedPattern}"`);
+                                    return false;
+                                }
+                            }
+                            return true;
+                        });
 
                     if (validFiles.length === 0) {
                         outputChannel.appendLine(`[warn] Skipping "${label}" — none of the mapped files exist locally anymore.`);
@@ -198,7 +212,20 @@ export async function executeForcePullSource(
 
         const validFiles = source.files
             .map((f: any) => resolve(sourceDir, f.original))
-            .filter(f => existsSync(f) && !bannedAbsolute.has(f));
+            .filter(f => {
+                if (!existsSync(f) || bannedAbsolute.has(f)) { return false; }
+                if (hasPatterns()) {
+                    const rel = f.startsWith(sourceDir)
+                        ? f.slice(sourceDir.length).replace(/^[\\/]/, '').replace(/\\/g, '/')
+                        : f;
+                    const matchedPattern = matchesAnyPattern(rel);
+                    if (matchedPattern) {
+                        outputChannel.appendLine(`[ban-pattern] Skipped "${rel}" — matches wildcard pattern "${matchedPattern}"`);
+                        return false;
+                    }
+                }
+                return true;
+            });
 
         if (validFiles.length === 0) {
             notifyWarn(`No previously mapped files currently exist in "${label}".`);

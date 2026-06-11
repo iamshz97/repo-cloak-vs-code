@@ -24,6 +24,7 @@ import { addSourcePath, addDestPath, getSourcePaths } from '../core/path-cache';
 import { getPresets, savePreset, ReplacementPair } from '../core/presets';
 import { commitCloakedChange, pullSubject } from '../core/cloaked-git';
 import { getBannedSet, hasBanList } from '../core/ban-list';
+import { matchesAnyPattern, hasPatterns } from '../core/ban-patterns';
 import { notifySuccess, notifyWarn, notifyInfo } from '../core/notify';
 
 /**
@@ -254,9 +255,20 @@ export async function executePull(
         let bannedPaths: Set<string> | undefined;
         if (hasBanList() && hasSecret()) {
             const secret = getOrCreateSecret();
-            const bannedRels = getBannedSet(sourceLabel, secret);
+            const bannedRels = getBannedSet(sourceDir, secret);
             if (bannedRels.size > 0) {
                 bannedPaths = new Set([...bannedRels].map(r => join(sourceDir, r)));
+            }
+        }
+        // Also hide files matching wildcard patterns
+        if (hasPatterns()) {
+            if (!bannedPaths) { bannedPaths = new Set(); }
+            const { getAllFiles: _getAll } = await import('../core/scanner');
+            for (const f of _getAll(sourceDir)) {
+                const rel = f.relativePath.replace(/\\/g, '/');
+                if (matchesAnyPattern(rel)) {
+                    bannedPaths.add(join(sourceDir, rel));
+                }
             }
         }
 
@@ -318,6 +330,29 @@ export async function executePull(
                 }
                 notifyInfo(`Removed ${filesWithSecrets.size} file(s) with secrets, continuing with ${selectedFiles.length}.`);
             } else if (proceed !== 'Continue anyway') {
+                return;
+            }
+        }
+
+        // ── Step 6a: Wildcard pattern filter ───────────────────────────────
+        if (hasPatterns()) {
+            const patternSkipped: string[] = [];
+            selectedFiles = selectedFiles.filter(f => {
+                const rel = relative(sourceDir, f).replace(/\\/g, '/');
+                const matchedPattern = matchesAnyPattern(rel);
+                if (matchedPattern) {
+                    patternSkipped.push(rel);
+                    outputChannel.appendLine(`[ban-pattern] Skipped "${rel}" — matches wildcard pattern "${matchedPattern}"`);
+                    return false;
+                }
+                return true;
+            });
+            if (patternSkipped.length > 0) {
+                notifyInfo(`Skipped ${patternSkipped.length} file(s) matching wildcard ban patterns. See output for details.`);
+                outputChannel.show(true);
+            }
+            if (selectedFiles.length === 0) {
+                notifyWarn('All selected files were excluded by wildcard ban patterns.');
                 return;
             }
         }
@@ -603,9 +638,20 @@ export async function executePullSource(
         let bannedPaths: Set<string> | undefined;
         if (hasBanList() && hasSecret()) {
             const secret = getOrCreateSecret();
-            const bannedRels = getBannedSet(label, secret);
+            const bannedRels = getBannedSet(sourceDir, secret);
             if (bannedRels.size > 0) {
                 bannedPaths = new Set([...bannedRels].map(r => join(sourceDir, r)));
+            }
+        }
+        // Hide wildcard-banned files from the tree
+        if (hasPatterns()) {
+            if (!bannedPaths) { bannedPaths = new Set(); }
+            const { getAllFiles: _getAll } = await import('../core/scanner');
+            for (const f of _getAll(sourceDir)) {
+                const rel = f.relativePath.replace(/\\/g, '/');
+                if (matchesAnyPattern(rel)) {
+                    bannedPaths.add(join(sourceDir, rel));
+                }
             }
         }
 
@@ -621,6 +667,23 @@ export async function executePullSource(
         if (selectedFiles.length === 0) {
             notifyWarn('No files selected.');
             return;
+        }
+
+        // Wildcard pattern filter (safety net)
+        if (hasPatterns()) {
+            selectedFiles = selectedFiles.filter(f => {
+                const rel = relative(sourceDir, f).replace(/\\/g, '/');
+                const matchedPattern = matchesAnyPattern(rel);
+                if (matchedPattern) {
+                    outputChannel.appendLine(`[ban-pattern] Skipped "${rel}" — matches wildcard pattern "${matchedPattern}"`);
+                    return false;
+                }
+                return true;
+            });
+            if (selectedFiles.length === 0) {
+                notifyWarn('All selected files were excluded by wildcard ban patterns.');
+                return;
+            }
         }
 
         // Secret scan
@@ -797,9 +860,20 @@ export async function executePullSourceGit(
         let bannedPathsGit: Set<string> | undefined;
         if (hasBanList() && hasSecret()) {
             const secret = getOrCreateSecret();
-            const bannedRels = getBannedSet(label, secret);
+            const bannedRels = getBannedSet(sourceDir, secret);
             if (bannedRels.size > 0) {
                 bannedPathsGit = new Set([...bannedRels].map(r => join(sourceDir, r)));
+            }
+        }
+        // Add wildcard-banned files so they are hidden in the tree and pre-filtered
+        if (hasPatterns()) {
+            if (!bannedPathsGit) { bannedPathsGit = new Set(); }
+            for (const f of gitFiles) {
+                const rel = f.replace(/\\/g, '/');
+                if (matchesAnyPattern(rel)) {
+                    bannedPathsGit.add(join(sourceDir, rel));
+                    outputChannel.appendLine(`[ban-pattern] Skipped "${rel}" — matches wildcard pattern "${matchesAnyPattern(rel)}"`);
+                }
             }
         }
 
@@ -826,6 +900,23 @@ export async function executePullSourceGit(
         if (selectedFiles.length === 0) {
             notifyWarn('No files selected.');
             return;
+        }
+
+        // Wildcard pattern filter (safety net)
+        if (hasPatterns()) {
+            selectedFiles = selectedFiles.filter(f => {
+                const rel = relative(sourceDir, f).replace(/\\/g, '/');
+                const matchedPattern = matchesAnyPattern(rel);
+                if (matchedPattern) {
+                    outputChannel.appendLine(`[ban-pattern] Skipped "${rel}" — matches wildcard pattern "${matchedPattern}"`);
+                    return false;
+                }
+                return true;
+            });
+            if (selectedFiles.length === 0) {
+                notifyWarn('All selected files were excluded by wildcard ban patterns.');
+                return;
+            }
         }
 
         // Secret scan

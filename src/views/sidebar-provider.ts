@@ -8,6 +8,7 @@ import { existsSync } from 'fs';
 import { hasMapping, loadRawMapping, decryptMappingV2, MappingV2, getStaleFiles, getOriginalSourcePath } from '../core/mapper';
 import { hasSecret, getOrCreateSecret } from '../core/crypto';
 import { getAllBans, hasBanList, removeBan } from '../core/ban-list';
+import { getBanPatterns, removePattern, removeOverride } from '../core/ban-patterns';
 
 function relativeTime(iso: string): string {
     const then = new Date(iso).getTime();
@@ -112,8 +113,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     await this._showSourceMenu(message.label);
                     break;
                 case 'unbanFile':
-                    if (message.sourceLabel && message.relPath && hasSecret()) {
-                        removeBan(message.sourceLabel, message.relPath, getOrCreateSecret());
+                    if (message.sourcePath && message.relPath && hasSecret()) {
+                        removeBan(message.sourcePath, message.relPath, getOrCreateSecret());
+                        this.refresh();
+                    }
+                    break;
+                case 'addBanPattern':
+                    vscode.commands.executeCommand('repo-cloak.addBanPattern');
+                    break;
+                case 'removeBanPattern':
+                    if (message.pattern) {
+                        removePattern(message.pattern);
+                        this.refresh();
+                    }
+                    break;
+                case 'addBanOverride':
+                    vscode.commands.executeCommand('repo-cloak.addBanOverride');
+                    break;
+                case 'removeBanOverride':
+                    if (message.relPath) {
+                        removeOverride(message.relPath);
                         this.refresh();
                     }
                     break;
@@ -272,6 +291,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             ? `<div class="collapsible" data-section="history" data-collapsed="true">${historyRows}</div>${historyToggle}`
             : '';
         // Banned files section
+        // Build a sourcePath \u2192 label lookup from the decrypted mapping for display purposes
+        const sourcePathToLabel = new Map<string, string>();
+        if (m?.sources) {
+            for (const s of m.sources) {
+                if (s.path && s.label) { sourcePathToLabel.set(s.path, s.label); }
+            }
+        }
         let bannedHtml = '';
         let bannedCount = 0;
         if (hasBanList() && hasSecret()) {
@@ -283,19 +309,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     const banRows = allBans.map((b, i) => {
                         const filename = escapeHtml(b.originalRelPath.split('/').pop() || b.originalRelPath);
                         const relPath = escapeHtml(b.originalRelPath);
-                        const srcLabel = escapeHtml(b.sourceLabel);
-                        const relPathJs = b.originalRelPath.replace(/'/g, "\\'");
-                        const srcLabelJs = b.sourceLabel.replace(/'/g, "\\'");
+                        // Resolve display label from path; fall back to showing the path basename
+                        const displayLabel = sourcePathToLabel.get(b.sourcePath)
+                            ?? b.sourcePath.split(/[\\/]/).pop()
+                            ?? b.sourcePath;
+                        const srcDisplay = escapeHtml(displayLabel);
+                        const relPathJs = b.originalRelPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        const srcPathJs = b.sourcePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                         const hidden = i >= COLLAPSE_THRESHOLD ? ' collapsible-extra' : '';
                         return `
                     <div class="list-item${hidden}">
                         <div class="list-item-content">
                             <span class="codicon codicon-circle-slash dim" style="font-size:12px"></span>
                             <span class="list-item-label" title="${relPath}">${filename}</span>
-                            <span class="list-item-desc">${srcLabel}</span>
+                            <span class="list-item-desc" title="${escapeHtml(b.sourcePath)}">${srcDisplay}</span>
                         </div>
                         <div class="list-item-actions">
-                            <button class="icon-btn xs" onclick="unban('${srcLabelJs}','${relPathJs}')" title="Unban \u2014 allow in future pulls">
+                            <button class="icon-btn xs" onclick="unban('${srcPathJs}','${relPathJs}')" title="Unban \u2014 allow in future pulls">
                                 <span class="codicon codicon-debug-step-over"></span>
                             </button>
                         </div>
@@ -310,6 +340,79 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 // ignore
             }
         }
+        // Wildcard patterns section
+        const banPatternsData = getBanPatterns();
+        let patternsHtml = '';
+        const patternsCount = banPatternsData.patterns.length;
+        const overridesCount = banPatternsData.overrides.length;
+        {
+            const patternRows = banPatternsData.patterns.map((p, i) => {
+                const pEscaped = escapeHtml(p);
+                const pJs = p.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const hidden = i >= COLLAPSE_THRESHOLD ? ' collapsible-extra' : '';
+                return `
+                    <div class="list-item${hidden}">
+                        <div class="list-item-content">
+                            <span class="codicon codicon-regex dim" style="font-size:11px"></span>
+                            <code class="list-item-label" title="${pEscaped}" style="font-size:11px">${pEscaped}</code>
+                        </div>
+                        <div class="list-item-actions">
+                            <button class="icon-btn xs" onclick="removeBanPattern('${pJs}')" title="Remove pattern">
+                                <span class="codicon codicon-trash"></span>
+                            </button>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            const patternToggle = banPatternsData.patterns.length > COLLAPSE_THRESHOLD
+                ? `<button class="toggle-more" data-toggle="banpatterns" onclick="toggleSection(this,'banpatterns',${banPatternsData.patterns.length - COLLAPSE_THRESHOLD})">Show ${banPatternsData.patterns.length - COLLAPSE_THRESHOLD} more</button>`
+                : '';
+
+            const overrideRows = banPatternsData.overrides.map((o, i) => {
+                const oEscaped = escapeHtml(o);
+                const oJs = o.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const hidden = i >= COLLAPSE_THRESHOLD ? ' collapsible-extra' : '';
+                return `
+                    <div class="list-item${hidden}">
+                        <div class="list-item-content">
+                            <span class="codicon codicon-debug-step-over dim" style="font-size:11px"></span>
+                            <code class="list-item-label" title="${oEscaped}" style="font-size:11px">${oEscaped}</code>
+                        </div>
+                        <div class="list-item-actions">
+                            <button class="icon-btn xs" onclick="removeBanOverride('${oJs}')" title="Remove override">
+                                <span class="codicon codicon-trash"></span>
+                            </button>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            const overrideToggle = banPatternsData.overrides.length > COLLAPSE_THRESHOLD
+                ? `<button class="toggle-more" data-toggle="banoverrides" onclick="toggleSection(this,'banoverrides',${banPatternsData.overrides.length - COLLAPSE_THRESHOLD})">Show ${banPatternsData.overrides.length - COLLAPSE_THRESHOLD} more</button>`
+                : '';
+
+            const overridesBlock = banPatternsData.overrides.length > 0
+                ? `<div class="sub-section-header" style="margin-top:6px;opacity:0.7;font-size:10px;display:flex;align-items:center;justify-content:space-between;">
+                        <span>Overrides <span class="count-badge" style="font-size:9px">${overridesCount}</span></span>
+                        <button class="icon-btn xs" onclick="send('addBanOverride')" title="Add override — allow a specific file through patterns">
+                            <span class="codicon codicon-add"></span>
+                        </button>
+                    </div>
+                    <div class="collapsible" data-section="banoverrides" data-collapsed="true">${overrideRows}</div>${overrideToggle}`
+                : `<div style="margin-top:6px;display:flex;align-items:center;justify-content:space-between;opacity:0.65;font-size:10px;">
+                        <span>Overrides</span>
+                        <button class="icon-btn xs" onclick="send('addBanOverride')" title="Add override — allow a specific file through patterns">
+                            <span class="codicon codicon-add"></span>
+                        </button>
+                   </div>
+                   <p class="empty" style="font-size:10px">No overrides</p>`;
+
+            const innerContent = `
+                <div class="collapsible" data-section="banpatterns" data-collapsed="true">${patternRows}</div>${patternToggle}
+                ${overridesBlock}`;
+
+            patternsHtml = `<div id="ban-patterns-list" style="display:none">${innerContent}</div>`;
+        }
+
         const hasSession = !!m;
         const totalSources = m?.stats?.totalSources || m?.sources?.length || 0;
         const totalFiles = m?.stats?.totalFiles || 0;
@@ -769,6 +872,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     </div>
     ` : ''}
 
+    <div class="section">
+        <div class="section-header clickable" onclick="toggleBanPatternsSection(this)" title="Toggle wildcard ban patterns">
+            <div style="display:flex;align-items:center;gap:5px;flex:1">
+                <span class="codicon codicon-chevron-right" id="banpatterns-chevron" style="font-size:11px;opacity:0.7"></span>
+                <span class="section-title">Wildcard Patterns</span>
+                ${patternsCount > 0 ? `<span class="count-badge">${patternsCount}</span>` : ''}
+            </div>
+            <button class="icon-btn xs" onclick="event.stopPropagation();send('addBanPattern')" title="Add wildcard pattern — e.g. *.Designer.cs or **/Migrations/**">
+                <span class="codicon codicon-add"></span>
+            </button>
+        </div>
+        ${patternsCount === 0
+            ? `<p class="empty">No patterns — add one to exclude files globally (e.g. <code>*.Designer.cs</code>)</p>`
+            : patternsHtml}
+    </div>
+
     <div id="rc-ring"></div>
 
     <script>
@@ -815,8 +934,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             }
             vscode.postMessage({ command: cmd, label: label || undefined });
         }
-        function unban(sourceLabel, relPath) {
-            vscode.postMessage({ command: 'unbanFile', sourceLabel, relPath });
+        function unban(sourcePath, relPath) {
+            vscode.postMessage({ command: 'unbanFile', sourcePath, relPath });
         }
         function filterReplacements(query) {
             const q = (query || '').trim().toLowerCase();
@@ -841,6 +960,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             if (chevron) {
                 chevron.className = isHidden ? 'codicon codicon-chevron-down' : 'codicon codicon-chevron-right';
             }
+        }
+        function toggleBanPatternsSection(headerEl) {
+            const list = document.getElementById('ban-patterns-list');
+            if (!list) { return; }
+            const isHidden = list.style.display === 'none';
+            list.style.display = isHidden ? '' : 'none';
+            const chevron = document.getElementById('banpatterns-chevron');
+            if (chevron) {
+                chevron.className = isHidden ? 'codicon codicon-chevron-down' : 'codicon codicon-chevron-right';
+            }
+        }
+        function removeBanPattern(pattern) {
+            vscode.postMessage({ command: 'removeBanPattern', pattern });
+        }
+        function removeBanOverride(relPath) {
+            vscode.postMessage({ command: 'removeBanOverride', relPath });
         }
     </script>
 </body>

@@ -15,6 +15,7 @@ import {
 import { hasSecret, getOrCreateSecret } from '../core/crypto';
 import { getAllFiles } from '../core/scanner';
 import { getBannedSet, hasBanList } from '../core/ban-list';
+import { matchesAnyPattern, hasPatterns } from '../core/ban-patterns';
 import { anonymizePath, Replacement } from '../core/anonymizer';
 import { findCloakedDirectory, normalize } from './pull-helper';
 
@@ -93,7 +94,7 @@ export class ProbeFileTool implements vscode.LanguageModelTool<ProbeInput> {
 
             // Banned set
             const banned = (hasBanList() && hasSecret())
-                ? getBannedSet(label, getOrCreateSecret())
+                ? getBannedSet(source.path, getOrCreateSecret())
                 : new Set<string>();
 
             // Walk source dir (cheap — uses existing ignore rules)
@@ -123,7 +124,7 @@ export class ProbeFileTool implements vscode.LanguageModelTool<ProbeInput> {
                 if (!matchType) { continue; }
 
                 let status: ProbeMatch['status'] = 'available';
-                if (banned.has(rel)) {
+                if (banned.has(rel) || (hasPatterns() && matchesAnyPattern(rel))) {
                     status = 'banned';
                 } else if (alreadyPulled.has(rel)) {
                     status = 'already-pulled';

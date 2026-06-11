@@ -26,6 +26,7 @@ export async function executeBanFile(
     // Resolve the target file — works from both explorer/context (Uri) and
     // view/item/context on a FileTreeItem ({ fullPath: string })
     // ── Pre-pull ban: file is from the source tree (not yet in the cloak) ──
+    // rootPath is the absolute source repo root — use it as the canonical ban key.
     if (
         uriOrItem &&
         !(uriOrItem instanceof vscode.Uri) &&
@@ -39,7 +40,8 @@ export async function executeBanFile(
             return;
         }
         const secret = getOrCreateSecret();
-        addBan(item.sourceLabel, relPath, secret);
+        // Key on the source repo path, not the label
+        addBan(item.rootPath, relPath, secret);
         fileTreeProvider?.banPathInTree(item.fullPath);
         vscode.window.setStatusBarMessage(
             `$(circle-slash) Banned "${relPath.split('/').pop()}" from "${item.sourceLabel}" — will be excluded from all future pulls`,
@@ -98,8 +100,9 @@ export async function executeBanFile(
     const secret = getOrCreateSecret();
 
     // Find the FileEntry whose cloaked path (plaintext) matches the target file.
-    // The `original` field may be encrypted — decrypt it only to get the ban key.
+    // Decrypt both source.path and file.original to build the ban key.
     let foundSourceLabel: string | null = null;
+    let foundSourcePath: string | null = null;
     let foundOriginalRelPath: string | null = null;
     let foundCloakedRelPath: string | null = null;
 
@@ -109,7 +112,13 @@ export async function executeBanFile(
             if (abs === targetPath) {
                 foundSourceLabel = source.label;
                 foundCloakedRelPath = file.cloaked;
-                // Decrypt the original path (it may be encrypted or plain)
+                // Decrypt the source repo path (used as canonical ban key)
+                try {
+                    foundSourcePath = decrypt(source.path, secret) ?? source.path;
+                } catch {
+                    foundSourcePath = source.path;
+                }
+                // Decrypt the original relative path
                 try {
                     const dec = decrypt(file.original, secret);
                     foundOriginalRelPath = dec ?? file.original;
@@ -121,13 +130,13 @@ export async function executeBanFile(
         }
     }
 
-    if (!foundSourceLabel || !foundOriginalRelPath || !foundCloakedRelPath) {
+    if (!foundSourceLabel || !foundSourcePath || !foundOriginalRelPath || !foundCloakedRelPath) {
         notifyWarn('This file is not tracked by Repo Cloak.');
         return;
     }
 
-    // Add to ban list (uses decrypted original path as the key)
-    addBan(foundSourceLabel, foundOriginalRelPath, secret);
+    // Add to ban list keyed on the source repo path
+    addBan(foundSourcePath, foundOriginalRelPath, secret);
 
     // Remove the FileEntry from the raw mapping (keep other encrypted entries intact)
     const cloakedRelToRemove = foundCloakedRelPath;

@@ -23,6 +23,7 @@ import { getPresets, savePreset, deletePreset, ReplacementPair } from './core/pr
 import { executePrSummary, executeManagePrTemplates } from './commands/pr-summary';
 import { registerChatParticipant } from './chat/participant';
 import { executeBanFile } from './commands/ban-file';
+import { addPattern, addOverride } from './core/ban-patterns';
 import { notifySuccess, notifyWarn } from './core/notify';
 import { ProbeFileTool } from './lm-tools/probe-file';
 import { RequestPullTool } from './lm-tools/request-pull';
@@ -552,6 +553,38 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('repo-cloak.banFile', (uriOrItem?: vscode.Uri | { fullPath: string }) => {
             executeBanFile(uriOrItem, sidebarProvider, outputChannel, fileTreeProvider);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.addBanPattern', async () => {
+            const input = await vscode.window.showInputBox({
+                title: 'Add Wildcard Ban Pattern',
+                prompt: 'Enter a glob pattern for files to always exclude (e.g. *.Designer.cs, **/Migrations/**, *.env)',
+                placeHolder: '*.Designer.cs',
+                validateInput: v => (v && v.trim()) ? null : 'Pattern cannot be empty'
+            });
+            if (input && input.trim()) {
+                addPattern(input.trim());
+                sidebarProvider.refresh();
+                vscode.window.setStatusBarMessage(`$(regex) Ban pattern added: "${input.trim()}"`, 3000);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('repo-cloak.addBanOverride', async () => {
+            const input = await vscode.window.showInputBox({
+                title: 'Add Pattern Override',
+                prompt: 'Enter the relative path of a file to allow through even if it matches a ban pattern',
+                placeHolder: 'src/Migrations/InitialCreate.Designer.cs',
+                validateInput: v => (v && v.trim()) ? null : 'Path cannot be empty'
+            });
+            if (input && input.trim()) {
+                addOverride(input.trim());
+                sidebarProvider.refresh();
+                vscode.window.setStatusBarMessage(`$(debug-step-over) Override added: "${input.trim()}"`, 3000);
+            }
         })
     );
 
