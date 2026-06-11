@@ -424,6 +424,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
 
         const hasSession = !!m;
+        const workspaceName = this._destDir ? require('path').basename(this._destDir) : null;
         const totalSources = m?.stats?.totalSources || m?.sources?.length || 0;
         const totalFiles = m?.stats?.totalFiles || 0;
         const totalTotalReplacements = m?.stats?.replacementsCount || m?.replacements?.length || 0;
@@ -829,7 +830,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     <div class="status-bar ${hasSession ? 'active' : ''}">
         <span class="status-dot"></span>
-        <span>${hasSession ? 'Active workspace' : 'No active session'}</span>
+        <span>${hasSession ? (workspaceName ? `<strong>${escapeHtml(workspaceName)}</strong>` : 'Active workspace') : 'No active session'}</span>
     </div>
 
     ${hasSession ? `
