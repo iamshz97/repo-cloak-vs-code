@@ -148,6 +148,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             { label: '$(sparkle) Copy for AI', description: 'Bundle files & copy to clipboard', cmd: 'repo-cloak.copyForAI' },
             { label: '$(cloud-download) Pull more files', description: 'Interactive file picker', cmd: 'repo-cloak.pullSource' },
             { label: '$(git-compare) Pull from Git changes', description: 'Uncommitted or commit-based', cmd: 'repo-cloak.pullSourceGit' },
+            { label: '$(refresh) Fresh Start', description: 'Clear all pulled files and re-select from source', cmd: 'repo-cloak.freshStart' },
             { label: '', kind: vscode.QuickPickItemKind.Separator },
             { label: '$(trash) Remove source', description: 'Delete from this workspace', cmd: 'repo-cloak.removeSource' }
         ] as any;
