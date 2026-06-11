@@ -134,6 +134,14 @@ export async function executeResolveOrphans(
                 }
             }
             notifySuccess(`Pushed ${pushed} file(s) back to source.`);
+
+            // Remove pushed files from the cloaked mapping so they're no longer tracked
+            const removed = picked.map(item => item.stale.cloaked);
+            const raw = loadRawMapping(cloakedDir);
+            if (raw) {
+                const updated = removeFilesFromSource(raw, label, removed);
+                saveMapping(cloakedDir, updated);
+            }
         }
 
     } catch (error) {

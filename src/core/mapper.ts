@@ -174,14 +174,19 @@ export function decryptMappingV2(mapping: MappingV2, secret: string): MappingV2 
         return mapping;
     }
 
-    const decryptedSources: SourceEntry[] = mapping.sources.map(s => ({
-        label: s.label,
-        path: decrypt(s.path, secret) || s.path,
-        files: s.files.map(f => ({
-            original: decrypt(f.original, secret) || f.original,
-            cloaked: f.cloaked
-        }))
-    }));
+    const decryptedSources: SourceEntry[] = mapping.sources.map(s => {
+        const path = decrypt(s.path, secret);
+        if (!path) { throw new Error(`Failed to decrypt source path for label "${s.label}" — wrong secret or corrupted mapping.`); }
+        return {
+            label: s.label,
+            path,
+            files: s.files.map(f => {
+                const original = decrypt(f.original, secret);
+                if (!original) { throw new Error(`Failed to decrypt file path in source "${s.label}" — wrong secret or corrupted mapping.`); }
+                return { original, cloaked: f.cloaked };
+            })
+        };
+    });
 
     const decryptedReplacements = decryptReplacements(
         mapping.replacements as EncryptedReplacement[],

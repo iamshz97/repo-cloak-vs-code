@@ -12,7 +12,7 @@
  */
 
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -129,9 +129,13 @@ export async function commitCloakedChange(
 
         const body = formatChangeBody(nameStatus);
         const message = body ? `${subject}\n\n${body}` : subject;
-        const safe = message.replace(/"/g, '\\"');
-        const emptyFlag = options.allowEmpty ? ' --allow-empty' : '';
-        await execAsync(`git commit${emptyFlag} -m "${safe}"`, { cwd: cloakedDir });
+        const commitArgs = ['commit', '-m', message];
+        if (options.allowEmpty) { commitArgs.push('--allow-empty'); }
+        await new Promise<void>((resolve, reject) => {
+            execFile('git', commitArgs, { cwd: cloakedDir }, (err) => {
+                if (err) { reject(err); } else { resolve(); }
+            });
+        });
 
         vscode.window.setStatusBarMessage(`$(git-commit) ${subject}`, 3000);
     } catch {

@@ -206,7 +206,7 @@ export async function executeForcePullSource(
         let bannedAbsolute: Set<string> = new Set();
         if (hasBanList() && hasSecret()) {
             const secret = getOrCreateSecret();
-            const bannedRels = getBannedSet(label, secret);
+            const bannedRels = getBannedSet(sourceDir, secret);
             bannedAbsolute = new Set([...bannedRels].map(r => resolve(sourceDir, r)));
         }
 

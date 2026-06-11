@@ -623,7 +623,12 @@ export function activate(context: vscode.ExtensionContext) {
             const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(tmpPath));
             await vscode.window.showTextDocument(doc, { preview: false });
 
-            const watcher = vscode.workspace.onDidSaveTextDocument(saved => {
+            // Use local disposables — NOT context.subscriptions — to avoid accumulating
+            // a new watcher pair on every command invocation (BUG-9 fix).
+            let banPatternSaveWatcher: vscode.Disposable | undefined;
+            let banPatternCloseWatcher: vscode.Disposable | undefined;
+
+            banPatternSaveWatcher = vscode.workspace.onDidSaveTextDocument(saved => {
                 if (saved.uri.fsPath !== tmpPath) { return; }
 
                 const lines = saved.getText().split('\n')
@@ -650,14 +655,12 @@ export function activate(context: vscode.ExtensionContext) {
             });
 
             // Clean up watcher when the document is closed
-            const closeWatcher = vscode.workspace.onDidCloseTextDocument(closed => {
+            banPatternCloseWatcher = vscode.workspace.onDidCloseTextDocument(closed => {
                 if (closed.uri.fsPath !== tmpPath) { return; }
-                watcher.dispose();
-                closeWatcher.dispose();
+                banPatternSaveWatcher?.dispose();
+                banPatternCloseWatcher?.dispose();
                 try { unlinkSync(tmpPath); } catch { /* ignore */ }
             });
-
-            context.subscriptions.push(watcher, closeWatcher);
         })
     );
 
@@ -698,7 +701,12 @@ export function activate(context: vscode.ExtensionContext) {
             const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(tmpPath));
             await vscode.window.showTextDocument(doc, { preview: false });
 
-            const watcher = vscode.workspace.onDidSaveTextDocument(async saved => {
+            // Use local disposables — NOT context.subscriptions — to avoid accumulating
+            // a new watcher pair on every command invocation (BUG-9 fix).
+            let replacementSaveWatcher: vscode.Disposable | undefined;
+            let replacementCloseWatcher: vscode.Disposable | undefined;
+
+            replacementSaveWatcher = vscode.workspace.onDidSaveTextDocument(async saved => {
                 if (saved.uri.fsPath !== tmpPath) { return; }
 
                 const pairs: { original: string; replacement: string }[] = [];
@@ -731,14 +739,12 @@ export function activate(context: vscode.ExtensionContext) {
                 );
             });
 
-            const closeWatcher = vscode.workspace.onDidCloseTextDocument(closed => {
+            replacementCloseWatcher = vscode.workspace.onDidCloseTextDocument(closed => {
                 if (closed.uri.fsPath !== tmpPath) { return; }
-                watcher.dispose();
-                closeWatcher.dispose();
+                replacementSaveWatcher?.dispose();
+                replacementCloseWatcher?.dispose();
                 try { unlinkSync(tmpPath); } catch { /* ignore */ }
             });
-
-            context.subscriptions.push(watcher, closeWatcher);
         })
     );
 
