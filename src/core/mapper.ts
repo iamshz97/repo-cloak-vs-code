@@ -262,6 +262,7 @@ export function removeSourceFromMapping(mapping: MappingV2, label: string): Mapp
     return {
         ...mapping,
         sources: updatedSources,
+        pullHistory: (mapping.pullHistory || []).filter(h => h.sourceLabel !== label),
         stats: {
             ...mapping.stats,
             totalFiles,

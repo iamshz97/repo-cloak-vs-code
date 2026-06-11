@@ -57,6 +57,21 @@ export async function executeForcePullAll(
             return;
         }
 
+        const totalFiles = sourceLabels.reduce((sum, l) => {
+            const src = getSourceByLabel(mapping, l);
+            return sum + (src?.files.length ?? 0);
+        }, 0);
+
+        const confirm = await vscode.window.showWarningMessage(
+            `Force Pull will overwrite the cloaked copy of all ${sourceLabels.length} source(s) with files from the originals.`,
+            {
+                modal: true,
+                detail: `Sources: ${sourceLabels.join(', ')}\n\n${totalFiles} file(s) will be re-synced. Any unsaved edits to the cloaked copies will be lost.`
+            },
+            'Force Pull All'
+        );
+        if (confirm !== 'Force Pull All') { return; }
+
         outputChannel.clear();
         outputChannel.appendLine('[Force Pull All] Started updating mapped files...');
         outputChannel.show();

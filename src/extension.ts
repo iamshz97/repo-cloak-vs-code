@@ -4,6 +4,8 @@
  */
 
 import * as vscode from 'vscode';
+import * as path from 'path';
+import { rmSync, existsSync } from 'fs';
 import { SidebarProvider } from './views/sidebar-provider';
 import { FileTreeProvider } from './views/file-tree-provider';
 import { executePull, executePullSource, executePullSourceGit, executePullAction } from './commands/pull';
@@ -187,16 +189,36 @@ export function activate(context: vscode.ExtensionContext) {
                 label = pick.label;
             }
 
-            const confirm = await vscode.window.showWarningMessage(
-                `Remove source "${label}" from the mapping? Files in the cloaked directory will not be deleted.`,
+            // Capture file list before modifying the mapping
+            const sourceEntry = mapping.sources.find(s => s.label === label);
+            const cloakedFiles = (sourceEntry?.files || []).map(f => f.cloaked);
+
+            const choice = await vscode.window.showWarningMessage(
+                `Remove source "${label}"?`,
                 { modal: true },
-                'Remove'
+                'Remove & Delete Files',
+                'Remove Only'
             );
-            if (confirm !== 'Remove') { return; }
+            if (!choice) { return; }
+
+            const deleteFiles = choice === 'Remove & Delete Files';
+
+            if (deleteFiles) {
+                // Delete individual tracked files
+                for (const rel of cloakedFiles) {
+                    const abs = path.join(cloakedDir, rel);
+                    if (existsSync(abs)) { rmSync(abs, { force: true }); }
+                }
+                // Remove the entire label subdirectory (catches any untracked files inside it too)
+                const labelDir = path.join(cloakedDir, label);
+                if (existsSync(labelDir)) { rmSync(labelDir, { recursive: true, force: true }); }
+            }
 
             mapping = removeSourceFromMapping(mapping, label);
             saveMapping(cloakedDir, mapping);
-            notifySuccess(`Removed source "${label}"`);
+            notifySuccess(deleteFiles
+                ? `Removed source "${label}" and deleted ${cloakedFiles.length} file(s)`
+                : `Removed source "${label}" from mapping (files kept on disk)`);
             } finally { sidebarProvider.refresh(); }
         })
     );

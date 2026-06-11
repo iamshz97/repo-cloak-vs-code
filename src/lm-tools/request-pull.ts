@@ -48,15 +48,33 @@ export class RequestPullTool implements vscode.LanguageModelTool<RequestPullInpu
         }
 
         try {
+            // Per-file confirmation: user must explicitly accept or reject each file.
+            const approvedPaths: string[] = [];
+            for (const filePath of relativePaths) {
+                const answer = await vscode.window.showInformationMessage(
+                    `Repo Cloak: Pull "${filePath}" into "${sourceLabel}"?`,
+                    { modal: true },
+                    'Accept',
+                    'Reject'
+                );
+                if (answer === 'Accept') {
+                    approvedPaths.push(filePath);
+                }
+            }
+
+            if (approvedPaths.length === 0) {
+                return text('No files were approved for pulling.');
+            }
+
             const result = await pullFilesProgrammatically(
-                { cloakedDir, sourceLabel, relativePaths },
+                { cloakedDir, sourceLabel, relativePaths: approvedPaths },
                 this.sidebarProvider,
                 this.outputChannel
             );
 
             const output: RequestPullOutput = {
                 sourceLabel,
-                requested: result.requested,
+                requested: relativePaths.length,
                 pulled: result.pulled,
                 pulledPaths: result.pulledPaths,
                 skippedAlreadyPulled: result.skippedAlreadyPulled,
