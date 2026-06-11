@@ -25,6 +25,7 @@ import { getPresets, savePreset, ReplacementPair } from '../core/presets';
 import { commitCloakedChange, pullSubject } from '../core/cloaked-git';
 import { getBannedSet, hasBanList } from '../core/ban-list';
 import { matchesAnyPattern, hasPatterns } from '../core/ban-patterns';
+import { getAllFiles } from '../core/scanner';
 import { notifySuccess, notifyWarn, notifyInfo } from '../core/notify';
 
 /**
@@ -251,26 +252,9 @@ export async function executePull(
         }
 
         // ── Step 4: Show file tree for selection ────────────────────────────
-        // Build set of banned absolute paths so they are invisible in the tree
-        let bannedPaths: Set<string> | undefined;
-        if (hasBanList() && hasSecret()) {
-            const secret = getOrCreateSecret();
-            const bannedRels = getBannedSet(sourceDir, secret);
-            if (bannedRels.size > 0) {
-                bannedPaths = new Set([...bannedRels].map(r => join(sourceDir, r)));
-            }
-        }
-        // Also hide files matching wildcard patterns
-        if (hasPatterns()) {
-            if (!bannedPaths) { bannedPaths = new Set(); }
-            const { getAllFiles: _getAll } = await import('../core/scanner');
-            for (const f of _getAll(sourceDir)) {
-                const rel = f.relativePath.replace(/\\/g, '/');
-                if (matchesAnyPattern(rel)) {
-                    bannedPaths.add(join(sourceDir, rel));
-                }
-            }
-        }
+        // Build banned paths (per-file bans + wildcard patterns) with progress
+        const bannedPathsSet = await buildBannedPaths(sourceDir);
+        const bannedPaths = bannedPathsSet.size > 0 ? bannedPathsSet : undefined;
 
         selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
             precheck: precheck.length > 0 ? precheck : undefined,
@@ -634,26 +618,9 @@ export async function executePullSource(
             return;
         }
 
-        // Build banned paths so they are hidden in the tree
-        let bannedPaths: Set<string> | undefined;
-        if (hasBanList() && hasSecret()) {
-            const secret = getOrCreateSecret();
-            const bannedRels = getBannedSet(sourceDir, secret);
-            if (bannedRels.size > 0) {
-                bannedPaths = new Set([...bannedRels].map(r => join(sourceDir, r)));
-            }
-        }
-        // Hide wildcard-banned files from the tree
-        if (hasPatterns()) {
-            if (!bannedPaths) { bannedPaths = new Set(); }
-            const { getAllFiles: _getAll } = await import('../core/scanner');
-            for (const f of _getAll(sourceDir)) {
-                const rel = f.relativePath.replace(/\\/g, '/');
-                if (matchesAnyPattern(rel)) {
-                    bannedPaths.add(join(sourceDir, rel));
-                }
-            }
-        }
+        // Build banned paths (per-file bans + wildcard patterns) with progress
+        const bannedPathsSet = await buildBannedPaths(sourceDir);
+        const bannedPaths = bannedPathsSet.size > 0 ? bannedPathsSet : undefined;
 
         // Show file tree for the source directory
         let selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
@@ -856,30 +823,27 @@ export async function executePullSourceGit(
         }
 
         // Resolve to absolute paths
-        // Build banned paths — filter from both the pre-checked list and the visible tree
-        let bannedPathsGit: Set<string> | undefined;
+        // Build banned paths — only check the known git-changed files (no full dir walk needed)
+        const bannedPathsGit = new Set<string>();
         if (hasBanList() && hasSecret()) {
             const secret = getOrCreateSecret();
             const bannedRels = getBannedSet(sourceDir, secret);
-            if (bannedRels.size > 0) {
-                bannedPathsGit = new Set([...bannedRels].map(r => join(sourceDir, r)));
-            }
+            for (const r of bannedRels) { bannedPathsGit.add(join(sourceDir, r)); }
         }
-        // Add wildcard-banned files so they are hidden in the tree and pre-filtered
         if (hasPatterns()) {
-            if (!bannedPathsGit) { bannedPathsGit = new Set(); }
             for (const f of gitFiles) {
                 const rel = f.replace(/\\/g, '/');
-                if (matchesAnyPattern(rel)) {
+                const matchedPattern = matchesAnyPattern(rel);
+                if (matchedPattern) {
                     bannedPathsGit.add(join(sourceDir, rel));
-                    outputChannel.appendLine(`[ban-pattern] Skipped "${rel}" — matches wildcard pattern "${matchesAnyPattern(rel)}"`);
+                    outputChannel.appendLine(`[ban-pattern] Skipped "${rel}" — matches wildcard pattern "${matchedPattern}"`);
                 }
             }
         }
 
         const absolutePaths = gitFiles
             .map(f => resolve(sourceDir, f))
-            .filter(f => existsSync(f) && !(bannedPathsGit && bannedPathsGit.has(f)));
+            .filter(f => existsSync(f) && !bannedPathsGit.has(f));
         if (absolutePaths.length === 0) {
             notifyWarn('None of the changed files exist on disk.');
             return;
@@ -890,7 +854,7 @@ export async function executePullSourceGit(
         let selectedFiles = await fileTreeProvider.startSelection(sourceDir, {
             precheck: absolutePaths,
             allowedPaths,
-            bannedPaths: bannedPathsGit,
+            bannedPaths: bannedPathsGit.size > 0 ? bannedPathsGit : undefined,
             purpose: {
                 title: `Pull (Git) → ${label}`,
                 message: `Confirm Git-changed files to pull into "${label}".`
@@ -1023,6 +987,45 @@ function findCloakedDirectory(): string | null {
 /**
  * Build allowed paths set from file list (includes parent directories)
  */
+/**
+ * Build the set of absolute paths that should be hidden in the file tree:
+ * explicit per-file bans + files matching wildcard ban patterns.
+ *
+ * The wildcard scan walks the entire source directory, so it runs inside a
+ * Window-level progress notification to avoid silently freezing the UI on
+ * large repos.
+ */
+async function buildBannedPaths(sourceDir: string): Promise<Set<string>> {
+    const bannedPaths = new Set<string>();
+
+    // Per-file bans (fast — just a JSON read + decrypt)
+    if (hasBanList() && hasSecret()) {
+        const secret = getOrCreateSecret();
+        const bannedRels = getBannedSet(sourceDir, secret);
+        for (const r of bannedRels) { bannedPaths.add(join(sourceDir, r)); }
+    }
+
+    // Wildcard pattern scan (slow on large repos — show progress)
+    if (hasPatterns()) {
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Window, title: '$(search) Applying ban patterns…' },
+            () => new Promise<void>(resolve => {
+                // Run synchronously inside the promise so withProgress shows
+                // the notification for the full duration of the scan.
+                for (const f of getAllFiles(sourceDir)) {
+                    const rel = f.relativePath.replace(/\\/g, '/');
+                    if (matchesAnyPattern(rel)) {
+                        bannedPaths.add(join(sourceDir, rel));
+                    }
+                }
+                resolve();
+            })
+        );
+    }
+
+    return bannedPaths;
+}
+
 function buildAllowedPaths(files: string[], sourceDir: string): Set<string> {
     const allowed = new Set<string>(files);
     for (const file of files) {

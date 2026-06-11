@@ -12,6 +12,23 @@ const CONFIG_DIR = join(homedir(), '.repo-cloak');
 const SECRET_FILE = join(CONFIG_DIR, 'secret.key');
 const ALGORITHM = 'aes-256-gcm';
 
+/**
+ * Module-level key cache: maps secret → derived AES-256 key Buffer.
+ * scryptSync is intentionally slow (~10–20 ms per call). Since the secret
+ * never changes within a VS Code session we derive once and reuse.
+ * The cache is process-scoped and cleared automatically on extension reload.
+ */
+const _derivedKeyCache = new Map<string, Buffer>();
+
+function deriveKey(secret: string): Buffer {
+    let key = _derivedKeyCache.get(secret);
+    if (!key) {
+        key = scryptSync(secret, 'repo-cloak-salt', 32) as Buffer;
+        _derivedKeyCache.set(secret, key);
+    }
+    return key;
+}
+
 export interface EncryptedReplacement {
     original: string;
     replacement: string;
@@ -53,7 +70,7 @@ export function hasSecret(): boolean {
  * Encrypt a string using user's secret
  */
 export function encrypt(text: string, secret: string): string {
-    const key = scryptSync(secret, 'repo-cloak-salt', 32);
+    const key = deriveKey(secret);
     const iv = randomBytes(16);
     const cipher = createCipheriv(ALGORITHM, key, iv);
 
@@ -75,7 +92,7 @@ export function decrypt(encryptedData: string, secret: string): string | null {
             throw new Error('Invalid encrypted data format');
         }
 
-        const key = scryptSync(secret, 'repo-cloak-salt', 32);
+        const key = deriveKey(secret);
         const iv = Buffer.from(ivHex, 'hex');
         const authTag = Buffer.from(authTagHex, 'hex');
         const decipher = createDecipheriv(ALGORITHM, key, iv);

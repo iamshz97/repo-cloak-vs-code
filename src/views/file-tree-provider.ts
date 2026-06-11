@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { readdirSync } from 'fs';
+import { readdirSync, Dirent } from 'fs';
 import { join, relative } from 'path';
 import { shouldIgnore, getAllFiles } from '../core/scanner';
 
@@ -50,6 +50,14 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     private _bannedPaths: Set<string> | null = null;
     private _currentSourceLabel: string | null = null;
 
+    /**
+     * Per-session directory entry cache.
+     * Maps absolute dir path → sorted Dirent array.
+     * Populated on first readdirSync per directory; cleared on setRoot/clear.
+     * This eliminates redundant disk reads as VS Code expands tree nodes.
+     */
+    private _dirCache = new Map<string, import('fs').Dirent[]>();
+
     get checkedPaths(): Set<string> {
         return this._checkedPaths;
     }
@@ -70,6 +78,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         this._checkedPaths.clear();
         this._allowedPaths = options?.allowedPaths || null;
         this._bannedPaths = options?.bannedPaths || null;
+        this._dirCache.clear(); // new root = new session
 
         if (options?.precheck) {
             this._precheck = new Set(options.precheck);
@@ -96,6 +105,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         this._resolveSelection = null;
         this._purpose = null;
         this._currentSourceLabel = null;
+        this._dirCache.clear();
         this._applyPurposeToView();
         this._onDidChangeTreeData.fire();
     }
@@ -355,19 +365,31 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         return element;
     }
 
-    getChildren(element?: FileTreeItem): FileTreeItem[] {
-        const dirPath = element ? element.fullPath : this._rootPath;
-        if (!dirPath) { return []; }
-
-        try {
-            const entries = readdirSync(dirPath, { withFileTypes: true });
-
-            // Sort: directories first, then alphabetical
+    /**
+     * Read directory entries, using the session cache to avoid redundant disk reads.
+     * The cache is keyed by absolute dir path and cleared on setRoot/clear.
+     */
+    private _readDir(dirPath: string): Dirent[] {
+        let entries = this._dirCache.get(dirPath);
+        if (!entries) {
+            entries = readdirSync(dirPath, { withFileTypes: true });
+            // Sort once here: directories first, then alphabetical
             entries.sort((a, b) => {
                 if (a.isDirectory() && !b.isDirectory()) { return -1; }
                 if (!a.isDirectory() && b.isDirectory()) { return 1; }
                 return a.name.localeCompare(b.name);
             });
+            this._dirCache.set(dirPath, entries);
+        }
+        return entries;
+    }
+
+    getChildren(element?: FileTreeItem): FileTreeItem[] {
+        const dirPath = element ? element.fullPath : this._rootPath;
+        if (!dirPath) { return []; }
+
+        try {
+            const entries = this._readDir(dirPath);
 
             return entries
                 .filter(entry => {
