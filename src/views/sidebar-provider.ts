@@ -233,6 +233,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                             <button class="icon-btn" onclick="send('copyForAI','${label}', this)" title="Copy for AI">
                                 <span class="codicon codicon-sparkle"></span>
                             </button>
+                            <button class="icon-btn" onclick="send('pullSource','${label}', this)" title="Pull files — pick files to add from source">
+                                <span class="codicon codicon-cloud-download"></span>
+                            </button>
                             <button class="icon-btn pull-btn" onclick="send('forcePullSource','${label}', this)" title="Force Pull — refresh cloaked copy from source (asks to confirm)">
                                 <span class="codicon codicon-arrow-down"></span>
                             </button>
